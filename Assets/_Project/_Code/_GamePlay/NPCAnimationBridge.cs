@@ -26,9 +26,16 @@ namespace Project.GamePlay
                 return;
             }
 
+            // We ask our data asset to choose a random state name from its internal pool
+            string chosenState = toneData.GetRandomAnimatorStateName();
+
+            // If the array is empty or null, we log a warning and exit early so Unity doesnt crash or thow an error.
+            if (string.IsNullOrEmpty(chosenState)) return;
+
+
             // Instead of dealing with transitions, we smoothly blend directly into the target state by name!
             // This is completely data-driven and bypasses structural Animator graph bottlenecks.
-            _animator.CrossFadeInFixedTime(toneData.AnimatorStateName, toneData.CrossfadeDuration);
+            _animator.CrossFadeInFixedTime(chosenState, toneData.CrossfadeDuration);
 
             Debug.Log($"<color=magenta>[Animation Bridge]</color> Smoothly blending into tone: {toneData.ToneName}");
         }
