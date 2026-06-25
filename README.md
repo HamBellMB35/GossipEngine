@@ -5,12 +5,12 @@
 
 A  highly decoupled social simulation engine built natively in **Unity 6** using the Universal Render Pipeline (URP).
 The core architectural goal of this project is to create an advanced town ecosystem where non-player characters (NPCs)
- autonomously witness events, alter dynamic reputation metrics, store mutating rumor records in private memory banks,
+autonomously witness events, alter dynamic reputation metrics, store mutating rumor records in private memory banks,
 and physically interact using localized AI Small Language Models (SLMs) to exchange information.
 
 By avoiding rigid, performance-heavy Unity execution models and traditional global singletons,
 this project is being built to prioritize clean scaling. By avoiding rigid Unity singletons,
- it leverages a high-performance C# framework that allows for seamless system expansion.
+it leverages a high-performance C# framework that allows for seamless system expansion.
 
 ---
 
