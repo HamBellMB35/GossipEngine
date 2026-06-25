@@ -16,4 +16,4 @@ MonoBehaviour:
   AnimatorStateNames:
   - Idle_Whispering_01
   - Idle_Whispering_02
-  CrossfadeDuration: 0.15
+  CrossfadeDuration: 0.25

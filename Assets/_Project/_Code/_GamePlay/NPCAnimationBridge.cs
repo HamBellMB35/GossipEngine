@@ -14,7 +14,7 @@ namespace Project.GamePlay
     public class NPCAnimationBridge : MonoBehaviour, INpcAnimationController
     {
         [Header("References")]
-        // FIX: We declare the actual private field here so the script knows what "_animator" is.
+        // We declare the actual private field here so the script knows what "_animator" is.
         // [SerializeField] allows us to drag and drop the Animator component inside the Unity Inspector!
         [SerializeField] private Animator _animator;
         public void TransitionToTone(GossipToneData toneData)
