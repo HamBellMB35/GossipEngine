@@ -14,12 +14,18 @@ namespace Project.GamePlay
     /// </summary>
     public class NPCGossipMemory : MonoBehaviour
     {
+        [Header("NPC Profile Identity")]
+        public string NpcName = "NPC_Villager_1";
+        public string Gender = "Male"; // e.g. Male, Female
+        [TextArea(2, 4)]
+        public string VocalStyle = "Raspy elder, speaks in anxious whispers";
+
         [Header("NPC Profile")]
         [SerializeField] private string _npcID;
         public string NPCID => _npcID;
 
         // Our memory directory: Key is the rumorID string, Values is the personal tracking state of that rumor for this specific NPC.
-        private readonly Dictionary<string, RuntimeRumoreState> _memoryDatabase = new Dictionary<string, RuntimeRumoreState>();
+        private readonly Dictionary<string, RuntimeRumorState> _knownRumors = new Dictionary<string, RuntimeRumorState>();
 
         // Our DI (Dependency Injection) reference to the central engine ( automatically delivered by Vcontainer )
         private IGossipEngine _gossipEngine;
@@ -45,11 +51,11 @@ namespace Project.GamePlay
             string id = rumorTemplate.RumorID;
 
             // Scenario A: This is brand new information for this NPC
-            if(!_memoryDatabase.ContainsKey(id))
+            if(!_knownRumors.ContainsKey(id))
             {
                 // We crete a fresh memory for this rumor and add it in to our dictionary
-                RuntimeRumoreState freshMemory = new RuntimeRumoreState(rumorTemplate, incomingCredibility);
-                _memoryDatabase.Add(id, freshMemory);
+                RuntimeRumorState freshMemory = new RuntimeRumorState(rumorTemplate, incomingCredibility);
+                _knownRumors.Add(id, freshMemory);
 
                 Debug.Log($"<color=yellow>[Memory Add]</color> NPC '{_npcID}' heard something new: {id} (Credibility: {incomingCredibility})");
             }
@@ -58,19 +64,33 @@ namespace Project.GamePlay
             else
             {
                 // If the source is huhgly believable, we can increase the NPC's belief in it. 
-                _memoryDatabase[id].PersonalCredibility = Mathf.Max(_memoryDatabase[id].PersonalCredibility , incomingCredibility);
-                _memoryDatabase[id].LastInteractionTime = System.DateTime.Now;
+                _knownRumors[id].PersonalCredibilityScore = Mathf.Max(_knownRumors[id].PersonalCredibilityScore , incomingCredibility);
+                _knownRumors[id].LastInteractionTime = System.DateTime.Now;
 
-                Debug.Log($"<color=cyan>[Memory Update]</color> NPC '{_npcID}' heard reinforcement about rumor: {id}. Belief updated to: {_memoryDatabase[id].PersonalCredibility}");
+                Debug.Log($"<color=cyan>[Memory Update]</color> NPC '{_npcID}' heard reinforcement about rumor: {id}. Belief updated to: {_knownRumors[id].PersonalCredibilityScore}");
             }
 
 
         }
 
         /// <summary>
-        /// Public check to see if an NPC knows a specific rumor profile.
+        /// Public utility lookup searching internal memory files to fetch a single runtime rumor element.
         /// </summary>
-        public bool KnowsRumor(string rumorId) => _memoryDatabase.ContainsKey(rumorId);
+        public RuntimeRumorState GetRumorState(string rumorId)
+        {
+            if (string.IsNullOrEmpty(rumorId)) return null;
 
+            _knownRumors.TryGetValue(rumorId, out RuntimeRumorState state);
+            return state;
+        }
+
+        /// <summary>
+        /// Public getter that safely exposes the entire dictionary of known runtime rumors 
+        /// so systems like proximity triggers can evaluate them.
+        /// </summary>
+        public Dictionary<string, RuntimeRumorState> GetKnownRumors()
+        {
+            return _knownRumors;
+        }
     }
 }

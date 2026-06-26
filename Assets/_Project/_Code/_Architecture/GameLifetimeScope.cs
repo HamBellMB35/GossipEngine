@@ -3,6 +3,7 @@ using VContainer.Unity;
 using UnityEngine;
 using Project.Architecture;
 using Project.GamePlay;
+using Project.Services;
 
 
 /// <summary>
@@ -13,22 +14,30 @@ public class GameLifetimeScope : LifetimeScope
 {
     protected override void Configure(IContainerBuilder builder)
     {
-        // Rule 1: Register our CoreGossipEngine as a Singleton.
+        // Core Framework Systems
+        // We Register our CoreGossipEngine as a Singleton.
         // This means VContainer creates exactly ONE instance of it in memory,
         // and shares that exact same instance with any script that requests an IGossipEngine.
 
         builder.Register<IGossipEngine, CoreGossipEngine>(Lifetime.Singleton);
 
-        // Rule 2: Register a custom bootstrapper class to control frame-zero execution.
+        // We Register a custom bootstrapper class to control frame-zero execution.
         builder.RegisterEntryPoint<GameBootstrapper>();
+
+        // AI INTEGRATION: Bind our offline local AI web service to its architecture contract
+        builder.Register<IAiGenerationService, LocalAiWebClient>(Lifetime.Singleton);
 
         // Beacause our NPCs live directly in the scene hierarchy as GameObjects, we need to instruct our Composition Root
         // ( GameLifetimeScope ) to automatically scan the scene when it wakes up, find these NPCGossipMemory brains ( components ), 
-        // and feed them the central engine dependency. This is called "auto-wiring" and it saves us from having to manually drag-and-drop references in the inspector.
+        // and feed them the central engine dependency AKA "auto-wiring" and it saves us from having to manually drag-and-drop references in the inspector.
 
+        // Dynamic Scene Discovery Scanner
         // We tell VContainer to scan the active scene layout and automatically bind
         // all NPCGossipMemory scripts to our central injection framework.   
         builder.RegisterComponentInHierarchy<NPCGossipMemory>();
+
+        // Tells VContainer to find and inject the AI engine straight into our trigger script!
+        builder.RegisterComponentInHierarchy<NPCProximityGossip>();
     }
 
 

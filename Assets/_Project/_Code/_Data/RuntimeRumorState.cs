@@ -13,22 +13,22 @@ namespace Project.Data
     /// This class tracks an NPC's unique relationship with a specific rumor.
     /// It lives purely in memory while the game is running.
     /// </summary>
-    public class RuntimeRumoreState
+    public class RuntimeRumorState
     {
         // A link bacl to our original immutable asset file
-        public RumorTemplate Template { get; private set; }
+        public RumorTemplate SourceTemplate { get; private set; }
 
         // How strongly this specific NPC belives this rumor. 0 = doesn't believe it at all, 1 = fully believes it.
-        public float PersonalCredibility { get; set; }
+        public float PersonalCredibilityScore { get; set; }
 
         // Tracks the real-world timestamp when this NPC last shared or heard this rumor. This is used to prevent NPCs from spamming the same rumor over and over again.
         public DateTime LastInteractionTime { get; set; }
 
         // Constructor: Runs when an NPC hears a peice of news for the very first time. It creates a new RuntimeRumorState for that NPC and links it to the immutable RumorTemplate.
-        public RuntimeRumoreState(RumorTemplate template, float initialCredibility)
+        public RuntimeRumorState(RumorTemplate template, float initialCredibility)
         {
-            Template = template;
-            PersonalCredibility = 0f; // Start with no belief in the rumor
+            SourceTemplate = template;
+            PersonalCredibilityScore = 0f; // Start with no belief in the rumor
             LastInteractionTime = DateTime.Now; // Set the last interaction time to now
 
         }
