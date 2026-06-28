@@ -4,6 +4,7 @@ using UnityEngine;
 using Project.Architecture;
 using Project.GamePlay;
 using Project.Services;
+using NUnit.Framework.Internal;
 
 
 /// <summary>
@@ -38,6 +39,16 @@ public class GameLifetimeScope : LifetimeScope
 
         // Tells VContainer to find and inject the AI engine straight into our trigger script!
         builder.RegisterComponentInHierarchy<NPCProximityGossip>();
+
+        // Finds the OpenAITTSVoice component sitting on your scene hierarchy 
+        // and binds it to the decoupled IVoiceService contract
+        builder.RegisterComponentInHierarchy<OpenAITTSVoice>()
+        .As<IVoiceService>();
+
+        // We register the tester to then inject directly
+        builder.RegisterComponentInHierarchy<GossipTester>();
+
+
     }
 
 
@@ -48,10 +59,13 @@ public class GameLifetimeScope : LifetimeScope
     public class GameBootstrapper : IStartable
     {
         private readonly IGossipEngine _gossipEngine;
-        // VContainer automatically injects the registered IGossipEngine instance here.
-        public GameBootstrapper(IGossipEngine gossipEngine)
+        private readonly GossipTester _tester; // Store the reference
+        
+        // VContainer injects BOTH the engine AND the tester here automatically// VContainer injects BOTH the engine AND the tester here automatically
+        public GameBootstrapper(IGossipEngine gossipEngine, GossipTester tester)
         {
             _gossipEngine = gossipEngine;
+            _tester = tester;
         }
 
 
@@ -72,10 +86,10 @@ public class GameLifetimeScope : LifetimeScope
             /// FOR TESTING PORPUSES ONLY: This is a temporary development block to simulate a rumor injection into our NPCs memory banks.///
             /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            var tester = Object.FindAnyObjectByType<GossipTester>();
-            if (tester != null)
+            // No searching required!
+            if (_tester != null)
             {
-                tester.ExecuteTestInjection();
+                _tester.ExecuteTestInjection();
             }
         }
     }

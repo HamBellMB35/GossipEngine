@@ -20,6 +20,11 @@ namespace Project.GamePlay
         [TextArea(2, 4)]
         public string VocalStyle = "Raspy elder, speaks in anxious whispers";
 
+        // NEW: Drag and drop your pre-made rumor ScriptableObjects directly here in the editor!
+        [Header("Starting Rumor Inventory")]
+        [Tooltip("Drop your pre-made RumorTemplate assets into this list via the Inspector.")]
+        public List<RumorTemplate> StartingRumors = new List<RumorTemplate>();
+
         [Header("NPC Profile")]
         [SerializeField] private string _npcID;
         public string NPCID => _npcID;
@@ -40,10 +45,33 @@ namespace Project.GamePlay
             Debug.Log($"<color=green>[NPC Memory]</color> {gameObject.name} loaded into the social matrix as ID: {_npcID}");
         }
 
-        /// <summary>
-        /// Call this when an NPC learns a rumor from another character or witnesses an event.
-        /// </summary>
-        
+        private void Start()
+        {
+            // Dynamic Initialization: Loop through all pre-made rumor assets dropped into the inspector list
+            if (StartingRumors != null && StartingRumors.Count > 0)
+            {
+                foreach (RumorTemplate rumorAsset in StartingRumors)
+                {
+                    if (rumorAsset == null) continue;
+
+                    // Dynamically set a high baseline test credibility score if the memory is empty, matching your architecture
+                    float defaultTestCredibility = 0.85f;
+
+                    // Pass the real asset and your credibility data into your strict constructor signature
+                    RuntimeRumorState dynamicMemory = new RuntimeRumorState(rumorAsset, defaultTestCredibility);
+
+                    // Add it directly to your dictionary under its unique asset ID
+                    if (!_knownRumors.ContainsKey(rumorAsset.RumorID))
+                    {
+                        _knownRumors.Add(rumorAsset.RumorID, dynamicMemory);
+                        Debug.Log($"<color=green>[Dynamic Memory Load]</color> {NpcName} successfully loaded asset rumor: '{rumorAsset.RumorID}' into memory storage.");
+                    }
+                }
+            }
+        }
+
+
+
         public void LearnRumor(RumorTemplate rumorTemplate, float incomingCredibility)
         {
             if (rumorTemplate == null) return;
