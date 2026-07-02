@@ -1,78 +1,122 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 using TMPro;
 
 namespace Project.UI
 {
+    // NOTE: This updated class provides absolute direct editor slider adjustments
+    // for fade transitions. It completely eliminates frame latency by resetting 
+    // and initiating the visibility interpolation loop the instant the interaction is called.
+
     /// <summary>
-    /// n your UI folder. This script handles showing the text, auto-hiding it after a few seconds,
-    /// and forcing the bubble to look at the player camera.
+    /// Manages the worldspace dialogue canvas text population with fully custom editor fade parameters.
     /// </summary>
+    [RequireComponent(typeof(CanvasGroup))]
     public class NPCSpeechBubble : MonoBehaviour
     {
-        [Header("UI Components")]
-        [SerializeField] private GameObject bubbleCanvasRoot;
-        [SerializeField] private TextMeshProUGUI dialogueText;
+        private CanvasGroup _canvasGroup;
+        private TextMeshProUGUI _dialogueText;
+        private Coroutine _activeDisplayWorker;
+        private bool _isInitialized = false;
 
-        [Header("Settings")]
-        [SerializeField] private float visibleDuration = 6f; // Duration the speech bubble remains visible
+        [Header("Timing Sliders (Seconds)")]
+        [Tooltip("How fast the text panel fades into full visibility.")]
+        [Range(0.05f, 2f)][SerializeField] private float fadeInDuration = 0.2f;
 
+        [Tooltip("How long the speech text stays completely visible on screen.")]
+        [SerializeField] private float visibleHoldDuration = 13f;
 
-        private Coroutine _hideCoroutine;
-        private Transform _mainCameraTransform;
+        [Tooltip("How fast the text panel fades back down to completely invisible.")]
+        [Range(0.05f, 4f)][SerializeField] private float fadeOutDuration = 0.75f;
 
-        private void Start()
+        private void Awake()
         {
-            if(Camera.main != null)
-            {
-                _mainCameraTransform = Camera.main.transform;
-            }
-            else
-            {
-                Debug.LogError("Main camera not found. Please ensure there is a camera tagged as 'MainCamera' in the scene.");
-            }
-
-            // Hide by default on startup
-            if (bubbleCanvasRoot != null) bubbleCanvasRoot.SetActive(false);
+            InitializeComponents();
         }
 
-        private void LateUpdate()
+        /// <summary>
+        /// Explicit initialization pass targeting local layers.
+        /// </summary>
+        public void InitializeComponents()
         {
-            // Billboard effect: Make the speech bubble face the player
-            if(bubbleCanvasRoot != null && bubbleCanvasRoot.activeSelf && _mainCameraTransform != null)
-            {
-                bubbleCanvasRoot.transform.LookAt(bubbleCanvasRoot.transform.position + _mainCameraTransform.forward);
-                // bubbleCanvasRoot.transform.Rotate(0, 180, 0); // Adjust rotation to face the camera correctly
-            }
-        }
+            if (_isInitialized) return;
 
-        public void DisplayText(string text)
-        {
-            if(dialogueText == null || bubbleCanvasRoot == null)
+            _canvasGroup = GetComponent<CanvasGroup>();
+            _dialogueText = GetComponentInChildren<TextMeshProUGUI>();
+
+            if (_canvasGroup == null || _dialogueText == null)
             {
-                Debug.LogError("Dialogue text or bubble canvas root is not assigned.");
+                Debug.LogError($"<color=red>[UI Error]</color> {gameObject.name} is missing critical canvas layout components!", this);
                 return;
             }
 
-            dialogueText.text = text;
-            bubbleCanvasRoot.SetActive(true);
+            // Clean default dormant states
+            _canvasGroup.alpha = 0f;
+            _canvasGroup.interactable = false;
+            _canvasGroup.blocksRaycasts = false;
 
-            // We reset the auto-hide timer if she says something else
-            if(_hideCoroutine != null)
+            _isInitialized = true;
+        }
+
+        /// <summary>
+        /// Populates the text panel string and instantly kicks off the custom animation fade timeline loop.
+        /// </summary>
+        public void DisplayText(string message)
+        {
+            if (!_isInitialized) InitializeComponents();
+            if (_dialogueText == null || _canvasGroup == null) return;
+
+            // Kill any currently active fade or wait routines to prevent overlap lag
+            if (_activeDisplayWorker != null)
             {
-                StopCoroutine(_hideCoroutine);
+                StopCoroutine(_activeDisplayWorker);
             }
 
-            _hideCoroutine = StartCoroutine(HideAfterDelay());
+            // Push the text statement to the renderer immediately on frame zero
+            _dialogueText.text = message;
 
+            // Start the snappy fade sequence pipeline right now
+            _activeDisplayWorker = StartCoroutine(AnimateBubbleSequence());
         }
 
-        private IEnumerator HideAfterDelay()
+        /// <summary>
+        /// Advanced time-delta animation pipeline running entirely independent of frame updates.
+        /// </summary>
+        private IEnumerator AnimateBubbleSequence()
         {
-            yield return new WaitForSeconds(visibleDuration);
-            bubbleCanvasRoot.SetActive(false);
+            _canvasGroup.interactable = true;
+            _canvasGroup.blocksRaycasts = true;
+
+            // --- 1. INSTANT FADE-IN PHASE ---
+            float timeElapsed = 0f;
+            float initialAlpha = _canvasGroup.alpha; // Track current point if interrupting an old fade
+
+            while (timeElapsed < fadeInDuration)
+            {
+                timeElapsed += Time.deltaTime;
+                // Perfect smooth linear interpolation profile scaling up
+                _canvasGroup.alpha = Mathf.Lerp(initialAlpha, 1f, timeElapsed / fadeInDuration);
+                yield return null;
+            }
+            _canvasGroup.alpha = 1f;
+
+            // --- 2. THE VISIBLE SUSTAIN PHASE (Locked down to your 13 seconds) ---
+            yield return new WaitForSeconds(visibleHoldDuration);
+
+            // --- 3. THE FADE-OUT PHASE ---
+            timeElapsed = 0f;
+            while (timeElapsed < fadeOutDuration)
+            {
+                timeElapsed += Time.deltaTime;
+                _canvasGroup.alpha = Mathf.Lerp(1f, 0f, timeElapsed / fadeOutDuration);
+                yield return null;
+            }
+            _canvasGroup.alpha = 0f;
+
+            // Lock structural layers back down cleanly
+            _canvasGroup.interactable = false;
+            _canvasGroup.blocksRaycasts = false;
         }
-
-
     }
 }

@@ -1,29 +1,27 @@
 using UnityEngine;
+using Project.Data;
 
 namespace Project.Data
 {
-    /// <summary>
-    /// This ScriptableObject is the data template for a single rumor.
-    /// It is immutable, meaning NPCs only read from it; they never write to it.
-    /// </summary>
-    [CreateAssetMenu(menuName = "Gossip Engine/ Rumor Template/Rumor Template")]
+    // Determines how the player interacts with this specific rumor.
+    public enum RumorTriggerMode { AutoProximity, ManualTalk }
+
+    [CreateAssetMenu(fileName = "NewRumor", menuName = "Project/Gossip/Rumor")]
     public class RumorTemplate : ScriptableObject
     {
-        [Header("Identity")]
-        [Tooltip("Unique system ID used by tge codebase to track this specific rumor.")]
         public string RumorID;
 
-        [Header("Narrative Context")]
-        [Tooltip("The ID of the NPC or Player that this rumor is originally about.")]
-        public string TargetSubjectID;
+        [Header("Animation")]
+        public GossipToneData AssociatedTone;
 
-        [TextArea(3, 6)]
-        [Tooltip("The core text description of what allegedly happened")]
-        public string CoreFact;
+        [Header("Interaction Settings")]
+        [Tooltip("How this rumor is triggered (Auto-proximity or Manual E-press).")]
+        public RumorTriggerMode TriggerMode = RumorTriggerMode.AutoProximity;
 
-        [Header("System Default")]
-        [Tooltip("How shocking/scandalous this rumor is. Higher values spread faster.")]
-        public float BaseSpiciness = 0.05f;
+        [Tooltip("Likelihood (0-100) of the NPC choosing to share this rumor when triggered.")]
+        [Range(0, 100)] public int ShareLikelihood = 100;
 
+        [Tooltip("Distance required to trigger this specific rumor.")]
+        public float TriggerDistance = 3.0f;
     }
 }

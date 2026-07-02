@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
+  m_Name: New_NPC_Profile_New Citizen_639183790069148531
+  m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
+  DefaultName: New Citizen
+  RigStyle: 0
+  BrainStyle: 0
+  InteractionPromptText: 'Talk [E]'
+  UiVerticalOffsetHeight: 2.2
+  SpeechBubbleCanvasSize: {x: 400, y: 200}
+  CanvasWorldScale: {x: 0.01, y: 0.01, z: 0.01}
+  SpeechBackgroundColor: {r: 0.1, g: 0.1, b: 0.1, a: 0.85}
+  MerchantMarketBackgroundColor: {r: 0.15, g: 0.15, b: 0.15, a: 0.95}
+  InitialJoy: 0.5
+  InitialFear: 0
+  InitialSadness: 0
+  ScriptedDialogues:
+  - RequiredState: 0
+    ResponseText: Hello traveller! What brings you to these parts?
+    VoiceLineAudio: {fileID: 0}

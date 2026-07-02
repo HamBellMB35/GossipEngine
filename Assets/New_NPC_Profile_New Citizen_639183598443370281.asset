@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
+  m_Name: New_NPC_Profile_New Citizen_639183598443370281
+  m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
+  DefaultName: New Citizen
+  RigType: 0
+  BrainType: 0
+  InitialJoy: 0.5
+  InitialFear: 0
+  InitialSadness: 0
+  ScriptedDialogues: []

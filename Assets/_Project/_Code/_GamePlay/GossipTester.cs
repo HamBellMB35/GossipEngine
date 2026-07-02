@@ -1,37 +1,47 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using Project.Data;
 
 namespace Project.GamePlay
 {
-    /// <summary>
-    /// A temporary development script to feed testing data into our live systems.
-    /// </summary>
     public class GossipTester : MonoBehaviour
     {
         [Header("Testing Targets")]
-        [SerializeField] private NPCGossipMemory _targetNPC;
-        [SerializeField] private RumorTemplate _testRumor;
-        [SerializeField] private GossipToneData _testTone;
+        public NPCAnimationBridge TargetNPC;
+        public RumorTemplate TestRumor;
 
+        [Header("Developer Controls")]
+        public Key InjectHotkey = Key.F5;
 
-        public void ExecuteTestInjection()
+        private void Update()
         {
-            if (_targetNPC == null || _testRumor == null) return;
-
-            Debug.Log("<color=orange>[Simulation Driver]</color> Simulating a rumor injection...");
-
-            // First, we feed the rumor striaght into our NPCs custom memory bank
-
-            _targetNPC.LearnRumor(_testRumor, _testRumor.BaseSpiciness);
-
-            // If the character has our animation bridge attached, we tell them to react to the gossip
-            if (_targetNPC.TryGetComponent<NPCAnimationBridge>(out var animationBridge) && _testTone != null)   
+            Keyboard kb = Keyboard.current;
+            if (kb != null)
             {
-                animationBridge.TransitionToTone(_testTone);
+                // This log will prove if your F5 press is being detected
+                if (kb[InjectHotkey].wasPressedThisFrame)
+                {
+                    Debug.Log("<color=magenta>[GossipTester]</color> F5 detected! Attempting injection...");
+                    InjectTestRumor();
+                }
+            }
+        }
+
+        public void InjectTestRumor()
+        {
+            if (TargetNPC == null)
+            {
+                Debug.LogError("<color=red>[CRITICAL ERROR]</color> GossipTester: TargetNPC is NOT assigned in the Inspector!");
+                return;
+            }
+            if (TestRumor == null)
+            {
+                Debug.LogError("<color=red>[CRITICAL ERROR]</color> GossipTester: TestRumor is NOT assigned in the Inspector!");
+                return;
             }
 
+            Debug.Log($"<color=cyan>[Gossip Tester]</color> Injecting Rumor: {TestRumor.RumorID}.");
+            TargetNPC.UpdateRumor(TestRumor);
         }
     }
 }
-
-

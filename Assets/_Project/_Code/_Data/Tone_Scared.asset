@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: Tone_Scared
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.GossipToneData
   ToneName: Scared
+  Mode: 1
+  CrossfadeDuration: 0.15
+  LoopDuration: 5
   AnimatorStateNames:
   - Idle_Scared_01
-  - Idle_Scared_02
-  CrossfadeDuration: 0.15

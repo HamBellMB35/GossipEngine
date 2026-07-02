@@ -79,3 +79,5 @@ crashlytics-build.properties
 
 # Local Secrets Repository Blocks
 secret_key.txt
+
+/_Recovery

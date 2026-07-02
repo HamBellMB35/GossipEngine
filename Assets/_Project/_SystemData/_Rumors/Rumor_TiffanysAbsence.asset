@@ -10,10 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 989607cddf0946f4faf9da0dd283ba04, type: 3}
-  m_Name: Rumor_TiffanysAbsebce
+  m_Name: Rumor_TiffanysAbsence
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.RumorTemplate
   RumorID: Tiffanys_Absence
-  TargetSubjectID: Biscuit Maker Tiffany
-  CoreFact: 'Tiffany dissapear into the north for about a week, some say she was
-    having fun '
-  BaseSpiciness: 0.85
+  AssociatedTone: {fileID: 11400000, guid: dcf29471479a70f44841d0fc0a37cd34, type: 2}

@@ -86,11 +86,11 @@ public class GameLifetimeScope : LifetimeScope
             /// FOR TESTING PORPUSES ONLY: This is a temporary development block to simulate a rumor injection into our NPCs memory banks.///
             /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            // No searching required!
-            if (_tester != null)
-            {
-                _tester.ExecuteTestInjection();
-            }
+            //// No searching required!
+            //if (_tester != null)
+            //{
+            //    _tester.ExecuteTestInjection();
+            //}
         }
     }
 

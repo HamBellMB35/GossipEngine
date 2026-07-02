@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: Tone_Whispering
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.GossipToneData
   ToneName: Whispering
+  Mode: 1
+  CrossfadeDuration: 0.25
+  LoopDuration: 5
   AnimatorStateNames:
   - Idle_Whispering_01
   - Idle_Whispering_02
-  CrossfadeDuration: 0.25
