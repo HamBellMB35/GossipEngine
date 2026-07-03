@@ -11,6 +11,17 @@ namespace Project.Data
     {
         public string RumorID;
 
+        [Header("Presentation Content")]
+        [Tooltip("If OFF, this rumor's text will never appear in the speech bubble — useful for audio-only mutters/grumbles, or rumors that should only trigger animation/reputation effects silently.")]
+        public bool ShowTextBubble = true;
+
+        [Tooltip("The text shown in the NPC's speech bubble when this rumor is presented (only if Show Text Bubble is ON).")]
+        [TextArea(2, 4)]
+        public string RumorDisplayText;
+
+        [Tooltip("Optional pre-recorded voice line to play alongside the text. Leave empty for silent/text-only.")]
+        public AudioClip VoiceLineAudio;
+
         [Header("Animation")]
         public GossipToneData AssociatedTone;
 

@@ -11,6 +11,11 @@ namespace Project.CustomEditor
 {
     // NOTE: This wizard automates the creation of modular NPC prefabs.
     // The CanvasGroup hierarchy has been permanently patched, and UI font sizing is now fully exposed for Asset Store distribution.
+    //
+    // v1: Removed the "Conversation Engine" (_brainType) field. It previously defaulted
+    // to the now-deleted GenerativeAI option. NPCArchetypeConfiguration.BrainStyle now
+    // always defaults to FixedScripted (its own class default), so the wizard no longer
+    // needs to set it explicitly.
 
     /// <summary>
     /// Professional asset store pipeline wizard window that dynamically scans project assemblies.
@@ -22,7 +27,6 @@ namespace Project.CustomEditor
         private string _npcName = "New Citizen";
         private GameObject _meshModel = null;
         private AnimationRigType _rigType = AnimationRigType.Humanoid;
-        private ConversationalBrainType _brainType = ConversationalBrainType.GenerativeAI;
 
         private enum NpcVariantType { CommonNPC, VendorNPC, QuestGiverNPC }
         private NpcVariantType _selectedVariant = NpcVariantType.CommonNPC;
@@ -69,7 +73,6 @@ namespace Project.CustomEditor
             _npcName = EditorGUILayout.TextField("NPC Display Name", _npcName);
             _meshModel = (GameObject)EditorGUILayout.ObjectField("3D Mesh Asset / Prefab", _meshModel, typeof(GameObject), false);
             _rigType = (AnimationRigType)EditorGUILayout.EnumPopup("Animation Rig Setup", _rigType);
-            _brainType = (ConversationalBrainType)EditorGUILayout.EnumPopup("Conversation Engine", _brainType);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
@@ -190,6 +193,10 @@ namespace Project.CustomEditor
 
             NPCProximityGossip proximityLogic = rootInstance.AddComponent<NPCProximityGossip>();
             rootInstance.AddComponent<AudioSource>();
+
+            // v3: Every generated NPC gets an NpcAddonRegistry so add-ons (Vendor, Quest Giver, etc.)
+            // are discoverable at runtime via TryGetAddon<T>() instead of raw GetComponent calls.
+            rootInstance.AddComponent<NpcAddonRegistry>();
 
             // Step 4: Automated Master Worldspace UI Canvas
             GameObject canvasObj = new GameObject("NPC_Worldspace_UI_Canvas");
@@ -320,7 +327,8 @@ namespace Project.CustomEditor
             NPCArchetypeConfiguration dataConfig = ScriptableObject.CreateInstance<NPCArchetypeConfiguration>();
             dataConfig.DefaultName = _npcName;
             dataConfig.RigStyle = _rigType;
-            dataConfig.BrainStyle = _brainType;
+            // v1: BrainStyle no longer set here — it uses NPCArchetypeConfiguration's own
+            // default (FixedScripted), since GenerativeAI is no longer a valid option.
             dataConfig.InteractionPromptText = _promptTextString;
             dataConfig.UiVerticalOffsetHeight = _canvasHeightOffset;
 

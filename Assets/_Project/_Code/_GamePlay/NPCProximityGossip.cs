@@ -1,12 +1,13 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Project.Data;
 
 namespace Project.GamePlay
 {
-    // NOTE: This version explicitly respects the ConversationalBrainType.
-    // If set to GenerativeAI, it bypasses static lists and null audio checks, 
-    // seamlessly handing control over to your AI generation extensions.
+    // v4: OnTriggerExit now calls NPCAnimationBridge.ForceRevertToIdle() when the player
+    // leaves the trigger zone, so the NPC doesn't stay stuck mid-animation after the player
+    // walks away (previously OnTriggerExit only hid the interaction prompt).
 
     public class NPCProximityGossip : MonoBehaviour
     {
@@ -21,6 +22,16 @@ namespace Project.GamePlay
 
         private bool _isPlayerInZone = false;
         private bool _isOnCooldown = false;
+        private NpcAddonRegistry _addonRegistry;
+        private NPCGossipMemory _gossipMemory;
+        private NPCAnimationBridge _animationBridge;
+
+        private void Awake()
+        {
+            _addonRegistry = GetComponent<NpcAddonRegistry>();
+            _gossipMemory = GetComponent<NPCGossipMemory>();
+            _animationBridge = GetComponent<NPCAnimationBridge>();
+        }
 
         private void Start()
         {
@@ -34,29 +45,45 @@ namespace Project.GamePlay
 
         private void OnTriggerEnter(Collider other)
         {
-            if (other.CompareTag("Player"))
+            if (!other.CompareTag("Player")) return;
+
+            _isPlayerInZone = true;
+
+            RuntimeRumorState autoRumor = _gossipMemory != null
+                ? _gossipMemory.GetNextRumorToShare(RumorTriggerMode.AutoProximity)
+                : null;
+
+            if (autoRumor != null)
             {
-                _isPlayerInZone = true;
-                if (!_isOnCooldown && interactionPromptCanvasGroup != null)
-                {
-                    interactionPromptCanvasGroup.alpha = 1f;
-                    interactionPromptCanvasGroup.interactable = true;
-                    interactionPromptCanvasGroup.blocksRaycasts = true;
-                }
+                _gossipMemory.PresentRumor(autoRumor.SourceTemplate);
+                return; // Skip showing the [E] prompt — nothing further required from the player.
+            }
+
+            if (!_isOnCooldown && interactionPromptCanvasGroup != null)
+            {
+                interactionPromptCanvasGroup.alpha = 1f;
+                interactionPromptCanvasGroup.interactable = true;
+                interactionPromptCanvasGroup.blocksRaycasts = true;
             }
         }
 
         private void OnTriggerExit(Collider other)
         {
-            if (other.CompareTag("Player"))
+            if (!other.CompareTag("Player")) return;
+
+            _isPlayerInZone = false;
+
+            if (interactionPromptCanvasGroup != null)
             {
-                _isPlayerInZone = false;
-                if (interactionPromptCanvasGroup != null)
-                {
-                    interactionPromptCanvasGroup.alpha = 0f;
-                    interactionPromptCanvasGroup.interactable = false;
-                    interactionPromptCanvasGroup.blocksRaycasts = false;
-                }
+                interactionPromptCanvasGroup.alpha = 0f;
+                interactionPromptCanvasGroup.interactable = false;
+                interactionPromptCanvasGroup.blocksRaycasts = false;
+            }
+
+            // v4: Don't leave the NPC frozen mid-animation just because the player walked off.
+            if (_animationBridge != null)
+            {
+                _animationBridge.ForceRevertToIdle();
             }
         }
 
@@ -81,7 +108,10 @@ namespace Project.GamePlay
                 interactionPromptCanvasGroup.blocksRaycasts = false;
             }
 
-            IInteractionExtension extension = GetComponent<IInteractionExtension>();
+            IInteractionExtension extension = _addonRegistry != null
+                ? _addonRegistry.GetActiveInteractionExtension()
+                : null;
+
             if (extension != null && extension.OnExtendInteraction())
             {
                 return;
@@ -93,31 +123,17 @@ namespace Project.GamePlay
 
         private void ExecuteAmbientGreeting()
         {
-            if (archetypeConfig == null) return;
+            RuntimeRumorState manualRumor = _gossipMemory != null
+                ? _gossipMemory.GetNextRumorToShare(RumorTriggerMode.ManualTalk)
+                : null;
 
-            // ====================================================================
-            // --- BRANCH 1: GENERATIVE AI OVERRIDE ---
-            // ====================================================================
-            if (archetypeConfig.BrainStyle == Project.Data.ConversationalBrainType.GenerativeAI)
+            if (manualRumor != null)
             {
-                Debug.Log("<color=magenta>[NPC Brain]</color> Generative AI active! Bypassing offline static lists and audio clip requirements.");
-
-                // Awaken the UI layout immediately to provide snappy player feedback
-                if (speechBubble != null)
-                {
-                    speechBubble.DisplayText("...");
-                }
-
-                // Broadcast a system message to awaken your attached AI modules (like NPCGossipMemory)
-                // so they can begin generating the TTS audio and injecting text into the bubble!
-                SendMessage("OnGenerativeAIInteract", SendMessageOptions.DontRequireReceiver);
-
-                return; // Exit immediately so it doesn't run the FixedScripted logic below!
+                _gossipMemory.PresentRumor(manualRumor.SourceTemplate);
+                return;
             }
 
-            // ====================================================================
-            // --- BRANCH 2: FIXED OFFLINE SCRIPTED ---
-            // ====================================================================
+            if (archetypeConfig == null) return;
             if (archetypeConfig.ScriptedDialogues == null || archetypeConfig.ScriptedDialogues.Count == 0) return;
 
             int randomIndex = UnityEngine.Random.Range(0, archetypeConfig.ScriptedDialogues.Count);

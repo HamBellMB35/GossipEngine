@@ -20,10 +20,19 @@ namespace Project.Data
         [Tooltip("How long to play the animation when in Loop mode.")]
         public float LoopDuration = 5.0f;
 
+        // v3: Back to string state names (as requested), but now drawn as a dropdown of real
+        // states pulled from TargetController below via [AnimatorStateName] — no more typing,
+        // no more typos, and no hidden "clip name must match state name" rule to remember.
+        [Tooltip("The Animator Controller this tone's states belong to. Assign this to populate the dropdown below.")]
+        public RuntimeAnimatorController TargetController;
+
         [Tooltip("List of possible animation state names to pick from randomly.")]
+        [AnimatorStateName(nameof(TargetController))]
         public string[] AnimatorStateNames;
 
         public string GetRandomAnimatorStateName() =>
-            AnimatorStateNames.Length > 0 ? AnimatorStateNames[Random.Range(0, AnimatorStateNames.Length)] : "";
+            AnimatorStateNames != null && AnimatorStateNames.Length > 0
+                ? AnimatorStateNames[Random.Range(0, AnimatorStateNames.Length)]
+                : "";
     }
 }

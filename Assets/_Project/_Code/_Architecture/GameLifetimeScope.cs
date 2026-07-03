@@ -4,7 +4,7 @@ using UnityEngine;
 using Project.Architecture;
 using Project.GamePlay;
 using Project.Services;
-using NUnit.Framework.Internal;
+using Project.Testing;
 
 
 /// <summary>
@@ -25,8 +25,8 @@ public class GameLifetimeScope : LifetimeScope
         // We Register a custom bootstrapper class to control frame-zero execution.
         builder.RegisterEntryPoint<GameBootstrapper>();
 
-        // AI INTEGRATION: Bind our offline local AI web service to its architecture contract
-        builder.Register<IAiGenerationService, LocalAiWebClient>(Lifetime.Singleton);
+        // v1: AI generation service and TTS voice service registrations removed.
+        // AI/LLM and TTS are no longer part of this project's pipeline.
 
         // Beacause our NPCs live directly in the scene hierarchy as GameObjects, we need to instruct our Composition Root
         // ( GameLifetimeScope ) to automatically scan the scene when it wakes up, find these NPCGossipMemory brains ( components ), 
@@ -37,17 +37,22 @@ public class GameLifetimeScope : LifetimeScope
         // all NPCGossipMemory scripts to our central injection framework.   
         builder.RegisterComponentInHierarchy<NPCGossipMemory>();
 
-        // Tells VContainer to find and inject the AI engine straight into our trigger script!
+        // Tells VContainer to find and inject dependencies straight into our trigger script!
         builder.RegisterComponentInHierarchy<NPCProximityGossip>();
 
-        // Finds the OpenAITTSVoice component sitting on your scene hierarchy 
-        // and binds it to the decoupled IVoiceService contract
-        builder.RegisterComponentInHierarchy<OpenAITTSVoice>()
-        .As<IVoiceService>();
+        // v2: Added — this was previously only wired via the now-deleted NPCLifetimeScope,
+        // meaning NPCAnimationBridge was never actually getting its ReputationService injected.
+        builder.RegisterComponentInHierarchy<NPCAnimationBridge>();
 
         // We register the tester to then inject directly
         builder.RegisterComponentInHierarchy<GossipTester>();
 
+        // v2: GossipManager and ReputationService are now registered ONCE, here, at the game
+        // level. NPCLifetimeScope (which duplicated these registrations as a separate scope)
+        // has been removed. Every script in the project that requests these via [Inject] now
+        // reliably receives the same shared instance.
+        builder.Register<GossipManager>(Lifetime.Singleton);
+        builder.Register<ReputationService>(Lifetime.Singleton);
 
     }
 
@@ -60,8 +65,8 @@ public class GameLifetimeScope : LifetimeScope
     {
         private readonly IGossipEngine _gossipEngine;
         private readonly GossipTester _tester; // Store the reference
-        
-        // VContainer injects BOTH the engine AND the tester here automatically// VContainer injects BOTH the engine AND the tester here automatically
+
+        // VContainer injects BOTH the engine AND the tester here automatically
         public GameBootstrapper(IGossipEngine gossipEngine, GossipTester tester)
         {
             _gossipEngine = gossipEngine;

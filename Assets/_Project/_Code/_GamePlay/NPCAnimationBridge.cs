@@ -1,237 +1,164 @@
-using UnityEngine; // Access to Unity engine core classes
-using UnityEngine.InputSystem; // Access to the modern Input System package
-using System.Collections.Generic; // Access to collection types like List
-using Project.Data; // Custom project data namespace for RumorTemplates
+using System.Collections.Generic;
+using UnityEngine;
+using VContainer;
+using Project.Services;
+using Project.Data;
+using System.Collections;
 
 namespace Project.GamePlay
 {
     /// <summary>
-    /// NPCAnimationBridge: Manages NPC reactions to rumors.
-    /// This script acts as the bridge between data (Rumors) and the visual output (Animator).
+    /// NPCAnimationBridge: Manages animation states with Inspector-editable timing.
+    /// Designed for modularity and user-friendly configuration.
     /// </summary>
+    // v7: _defaultIdleAnimations (List<AnimationClip>) reverted back to a List<string> of state
+    // names, per feedback that clip-based lookup was a bigger architectural risk (conflicts
+    // with a future Locomotion add-on) without actually removing the failure mode (clip name
+    // still had to match state name). Instead, the string field now uses [AnimatorStateName],
+    // which draws it as a dropdown of real states pulled straight from the assigned Animator's
+    // controller — typos and mismatches are no longer possible at all.
     public class NPCAnimationBridge : MonoBehaviour
     {
-        [Header("Components")]
-        [Tooltip("The Animator component controlling this character's rig.")]
-        [SerializeField] private Animator _animator; // Reference to the Animator component
-        [Tooltip("The UI element to show for 'Manual' interaction.")]
-        [SerializeField] private GameObject _talkPromptUI; // UI that appears over the NPC's head
-        [Tooltip("Reference to the Input Action (e.g., 'Interact') from your Input Asset.")]
-        [SerializeField] private InputActionReference _interactAction; // The modern input action for interaction
+        [Header("Animation Settings")]
+        [Tooltip("The duration to hold a transient animation (e.g., Whisper) before returning to Idle.")]
+        [SerializeField] private float _defaultRevertDelay = 3.0f;
+        [Tooltip("The transition duration for CrossFade.")]
+        [SerializeField] private float _crossFadeDuration = 0.2f;
 
-        [Header("Behavior Settings")]
-        [Tooltip("Minimum time (in seconds) the NPC must wait before reacting again.")]
-        [SerializeField] private float ReactionCooldown = 5.0f; // Cooldown duration in seconds
+        [Header("Idle / Default Animation Pool")]
+        [Tooltip("Pool of Animator state names this NPC can revert to when returning to a resting state. One is chosen at random each time a revert happens. Populated as a dropdown from the Animator assigned below.")]
+        [AnimatorStateName(nameof(_animator))]
+        [SerializeField] private List<string> _defaultIdleStates = new List<string> { "Idle_Neutral" };
 
-        [Header("Default Behavior")]
-        [Tooltip("List of animator state names used for default idle behavior.")]
-        [SerializeField] private List<string> IdleStateNames = new List<string>(); // List of animation states for idling
+        [Tooltip("The Animator driving this NPC's animation states. Auto-resolved from this GameObject or its children if left empty. Also used to populate the Default Idle States dropdown above.")]
+        [SerializeField] private Animator _animator;
 
-        // Private internal state tracking
-        private Transform _playerTransform; // Cached transform of the player for distance math
-        private RumorTemplate _activeRumor; // The specific rumor currently assigned to this NPC
-        private bool _isCurrentlyReacting = false; // Flag representing if the NPC is currently playing a rumor reaction
-        private float _cooldownTimer = 0.0f; // Timer tracking remaining cooldown seconds
-        private bool _wasPlayerInRange = false; // Tracks the last proximity state to filter logs
+        private ReputationService _reputation;
+        private readonly List<int> _defaultIdleStateHashes = new List<int>();
+        private Coroutine _revertCoroutine;
 
-        // Hash caches: Integers lookups are significantly faster than string lookups
-        private List<int> _idleStateHashes = new List<int>(); // List of cached integer hashes for idle animations
-        private List<int> _rumorStateHashes = new List<int>(); // List of cached integer hashes for rumor reactions
-
-        // Enable input listening when this component is enabled in the scene
-        private void OnEnable() => _interactAction?.action.Enable();
-        // Disable input listening when this component is disabled to free resources
-        private void OnDisable() => _interactAction?.action.Disable();
-
-        private void Start()
+        private void Awake()
         {
-            // Iterate through every idle state name defined in the Inspector
-            foreach (string state in IdleStateNames)
+            if (_animator == null)
             {
-                // Only hash the string if it is not null or empty to prevent invalid hashes
-                if (!string.IsNullOrEmpty(state))
+                _animator = GetComponent<Animator>();
+                if (_animator == null)
                 {
-                    // Convert the string name to a numeric hash and add it to our list
-                    _idleStateHashes.Add(Animator.StringToHash(state));
+                    _animator = GetComponentInChildren<Animator>();
                 }
             }
 
-            // Locate the GameObject tagged as 'Player' in the scene hierarchy
-            GameObject player = GameObject.FindGameObjectWithTag("Player");
-            // If the player exists, save its transform reference
-            if (player != null) _playerTransform = player.transform;
+            if (_animator == null)
+            {
+                Debug.LogWarning($"<color=orange>[NPCAnimationBridge]</color> No Animator found on '{gameObject.name}' or its children. Animation calls will be ignored.", this);
+            }
 
-            // Log the initialization event to confirm the bridge is running
-            Debug.Log($"<color=white>[Init]</color> NPC {gameObject.name} initialized. Idle States: {_idleStateHashes.Count}");
+            RebuildIdleHashes();
 
-            // Play a random idle animation so the NPC is not stuck in a T-Pose
-            PlayRandomIdle();
+            if (_defaultIdleStateHashes.Count == 0)
+            {
+                Debug.LogWarning($"<color=orange>[NPCAnimationBridge]</color> '{gameObject.name}' has no entries in Default Idle States. Reverting to idle will not work.", this);
+            }
         }
 
-        private void Update()
+        private void OnValidate()
         {
-            // If we don't have a player or a rumor, stop all logic to prevent errors
-            if (_playerTransform == null || _activeRumor == null) return;
+            RebuildIdleHashes();
+        }
 
-            // Reduce the cooldown timer by the amount of time passed since the last frame
-            if (_cooldownTimer > 0) _cooldownTimer -= Time.deltaTime;
+        private void RebuildIdleHashes()
+        {
+            _defaultIdleStateHashes.Clear();
+            if (_defaultIdleStates == null) return;
 
-            // Calculate current Euclidean distance between the NPC and the player
-            float distance = Vector3.Distance(transform.position, _playerTransform.position);
-            // Check if player is within the trigger radius defined by the rumor template
-            bool inRange = distance <= _activeRumor.TriggerDistance;
-
-            // Check if the proximity state has changed compared to the last frame
-            if (inRange != _wasPlayerInRange)
+            foreach (string stateName in _defaultIdleStates)
             {
-                // Only log if the state changed to avoid flooding the console
-                Debug.Log($"<color=yellow>[Detection]</color> NPC: {gameObject.name} | InRange: {inRange} | Distance: {distance:F2}");
-                // Update the memory of the player's range status
-                _wasPlayerInRange = inRange;
-            }
-
-            // Update UI visibility: Active only if in manual mode, in range, and not on cooldown
-            if (_talkPromptUI != null)
-                _talkPromptUI.SetActive(_activeRumor.TriggerMode == RumorTriggerMode.ManualTalk && inRange && _cooldownTimer <= 0);
-
-            // AUTO-PROXIMITY LOGIC: NPC reacts whenever player walks into range
-            if (_activeRumor.TriggerMode == RumorTriggerMode.AutoProximity)
-            {
-                // Verify player is in range, NPC is not already reacting, and cooldown is finished
-                if (inRange && !_isCurrentlyReacting && _cooldownTimer <= 0)
+                if (!string.IsNullOrWhiteSpace(stateName))
                 {
-                    Debug.Log($"<color=cyan>[Logic]</color> Auto-Proximity triggered.");
-                    TriggerToneVisuals(true);
-                }
-                // If player leaves range while NPC is reacting, stop the reaction
-                else if (!inRange && _isCurrentlyReacting)
-                {
-                    TriggerToneVisuals(false);
-                }
-            }
-            // MANUAL TALK LOGIC: NPC waits for the player to press the interact key
-            else if (_activeRumor.TriggerMode == RumorTriggerMode.ManualTalk)
-            {
-                // Verify player is in range, input was pressed, and cooldown is finished
-                if (inRange && _interactAction.action.triggered && _cooldownTimer <= 0)
-                {
-                    // Perform a probability check against the rumor's share likelihood percentage
-                    if (Random.Range(0, 100) <= _activeRumor.ShareLikelihood)
-                    {
-                        Debug.Log($"<color=cyan>[Logic]</color> Manual success. Triggering reaction.");
-                        TriggerToneVisuals(true);
-                    }
-                    else
-                    {
-                        // Log a warning if the player tried to talk but the random chance failed
-                        Debug.Log($"<color=orange>[Logic]</color> Interaction triggered, likelihood roll failed.");
-                    }
-                }
-                // If player leaves range while NPC is reacting, stop the reaction
-                else if (!inRange && _isCurrentlyReacting)
-                {
-                    TriggerToneVisuals(false);
-                }
-            }
-
-            // AUTO-REVERT LOGIC: Monitor if the reaction animation has finished playing
-            if (_isCurrentlyReacting)
-            {
-                // Get the current state info from the animator base layer
-                AnimatorStateInfo stateInfo = _animator.GetCurrentAnimatorStateInfo(0);
-                // Check if animation is nearly done (95%+) and is set to NOT loop
-                if (stateInfo.normalizedTime >= 0.95f && !stateInfo.loop)
-                {
-                    Debug.Log("<color=purple>[Logic]</color> Reaction clip finished. Reverting to idle.");
-                    TriggerToneVisuals(false);
+                    _defaultIdleStateHashes.Add(Animator.StringToHash(stateName));
                 }
             }
         }
 
-        // Updates the active rumor and caches animation states as hashes
-        public void UpdateRumor(RumorTemplate newRumor)
+        [Inject]
+        public void Construct(ReputationService reputation)
         {
-            // Assign the incoming rumor template to the local private variable
-            _activeRumor = newRumor;
-            // Purge the old rumor cache so no stale animation data remains
-            _rumorStateHashes.Clear();
-
-            // Verify that the rumor template has a valid tone attached
-            if (_activeRumor.AssociatedTone != null)
-            {
-                // Iterate through every animation state name string in the tone asset
-                foreach (string name in _activeRumor.AssociatedTone.AnimatorStateNames)
-                {
-                    // Convert the human-readable string into an integer hash for the Animator
-                    int stateHash = Animator.StringToHash(name);
-                    // Store the hash in our rumor reaction list
-                    _rumorStateHashes.Add(stateHash);
-                }
-            }
-
-            // Log the update event and the number of successfully hashed states
-            Debug.Log($"<color=blue>[System]</color> Rumor Updated: {newRumor.RumorID}. Hashed {_rumorStateHashes.Count} states.");
+            _reputation = reputation;
+            Debug.Log("<color=green>[Injection]</color> NPCAnimationBridge: ReputationService resolved.");
         }
 
-        // Orchestrates the visual transition between reaction and idle states
-        private void TriggerToneVisuals(bool active)
+        /// <summary>
+        /// Plays the correct animation for a given GossipToneData, respecting its PlaybackMode:
+        /// - None: does nothing (no animation change at all).
+        /// - PlayOnce: plays once, then auto-reverts to a random idle state after the default revert delay.
+        /// - Loop: plays and holds for the tone's own LoopDuration, then auto-reverts to a random idle state.
+        /// </summary>
+        public void PlayToneAnimation(GossipToneData tone)
         {
-            // Set the reaction flag to the provided boolean state
-            _isCurrentlyReacting = active;
+            if (tone == null) return;
+            if (tone.Mode == PlaybackMode.None) return; // No animation for this tone by design.
 
-            // If enabling a reaction, process the animation logic
-            if (active)
-            {
-                // Set the cooldown timer to prevent spamming reactions
-                _cooldownTimer = ReactionCooldown;
-                Debug.Log($"<color=green>[Animation]</color> Reaction active. Cooldown: {ReactionCooldown}s.");
+            string stateName = tone.GetRandomAnimatorStateName();
+            if (string.IsNullOrEmpty(stateName)) return;
 
-                // Ensure we have at least one valid state to play
-                if (_rumorStateHashes.Count > 0)
-                {
-                    // Pick a random hash from our collection to ensure visual variety
-                    int hash = _rumorStateHashes[Random.Range(0, _rumorStateHashes.Count)];
-                    // Start the crossfade to the chosen state
-                    SafeCrossFade(hash, _activeRumor.AssociatedTone.CrossfadeDuration);
-                }
-            }
-            else
+            int stateHash = Animator.StringToHash(stateName);
+            float revertDelay = tone.Mode == PlaybackMode.Loop ? tone.LoopDuration : _defaultRevertDelay;
+
+            SetAnimationState(stateHash, useTimer: true, revertDelayOverride: revertDelay);
+        }
+
+        /// <summary>
+        /// Public API to set state. Uses _defaultRevertDelay if no specific duration is passed.
+        /// </summary>
+        public void SetAnimationState(int stateHash, bool useTimer = true, float? revertDelayOverride = null)
+        {
+            if (_animator == null) return;
+
+            _animator.CrossFade(stateHash, _crossFadeDuration);
+            Debug.Log($"<color=cyan>[Animation]</color> State changed to: {stateHash}");
+
+            bool isAlreadyAnIdleState = _defaultIdleStateHashes.Contains(stateHash);
+            if (useTimer && !isAlreadyAnIdleState)
             {
-                // If disabling the reaction, revert to the standard idle cycle
-                Debug.Log("<color=green>[Animation]</color> Reverting to Idle.");
-                PlayRandomIdle();
+                if (_revertCoroutine != null) StopCoroutine(_revertCoroutine);
+                float delay = revertDelayOverride ?? _defaultRevertDelay;
+                _revertCoroutine = StartCoroutine(RevertToIdleAfterDelay(delay));
             }
         }
 
-        // Selects a random idle state to maintain visual variety
-        private void PlayRandomIdle()
+        /// <summary>
+        /// Immediately cancels any pending revert timer and cross-fades straight to a random
+        /// idle state. Intended for cases like the player walking out of an NPC's proximity
+        /// zone, where waiting out the normal timed revert isn't appropriate.
+        /// </summary>
+        public void ForceRevertToIdle()
         {
-            // Guard clause: stop if no idle states exist to prevent index errors
-            if (_idleStateHashes.Count == 0) return;
+            if (_animator == null) return;
 
-            // Pick a random hash from the idle pool
-            int hash = _idleStateHashes[Random.Range(0, _idleStateHashes.Count)];
-            // Log that the NPC is returning to ambient idle
-            Debug.Log("<color=white>[Status]</color> Character has entered default idle state.");
+            if (_revertCoroutine != null)
+            {
+                StopCoroutine(_revertCoroutine);
+                _revertCoroutine = null;
+            }
 
-            // Transition smoothly to the chosen idle animation
-            SafeCrossFade(hash, 0.5f);
+            CrossFadeToRandomIdle();
+            Debug.Log("<color=yellow>[Animation]</color> Force-reverted to Idle state.");
         }
 
-        // Executes crossfade after validating state existence in the animator
-        private void SafeCrossFade(int hash, float fade)
+        private IEnumerator RevertToIdleAfterDelay(float delay)
         {
-            // Confirm the animator contains the state to prevent console warnings
-            if (_animator.HasState(0, hash))
-            {
-                // Command the animator to crossfade using the duration specified
-                _animator.CrossFadeInFixedTime(hash, fade);
-            }
-            else
-            {
-                // Log a high-priority error if an animation is missing from the controller
-                Debug.LogError($"<color=red>[CRITICAL ERROR]</color> {gameObject.name}: Hash {hash} not found in Base Layer!");
-            }
+            yield return new WaitForSeconds(delay);
+
+            CrossFadeToRandomIdle();
+            Debug.Log("<color=yellow>[Animation]</color> Auto-reverted to Idle state.");
+        }
+
+        private void CrossFadeToRandomIdle()
+        {
+            if (_defaultIdleStateHashes.Count == 0) return;
+
+            int randomIdleHash = _defaultIdleStateHashes[Random.Range(0, _defaultIdleStateHashes.Count)];
+            _animator.CrossFade(randomIdleHash, _crossFadeDuration);
         }
     }
 }
