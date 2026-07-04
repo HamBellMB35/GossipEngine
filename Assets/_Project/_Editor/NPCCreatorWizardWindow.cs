@@ -3,6 +3,8 @@ using UnityEditor;
 using UnityEngine.UI;
 using TMPro;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Project.Data;
 using Project.GamePlay;
 using Project.UI;
@@ -220,6 +222,40 @@ namespace Project.CustomEditor
             }
         }
 
+        /// <summary>
+        /// v6: Returns a name guaranteed not to collide with any NPC currently in the open
+        /// scene (checked by NPCGossipMemory.NpcName, case-insensitive). If "Vanessa" already
+        /// exists, returns "Vanessa_1"; if that also exists, "Vanessa_2", and so on.
+        /// </summary>
+        private string GetUniqueNpcName(string baseName)
+        {
+            // v7: FindObjectsOfType<T>(bool) is deprecated. FindObjectsByType requires an
+            // explicit sort mode — we don't need results sorted by InstanceID here, so
+            // FindObjectsSortMode.None is both correct and faster.
+            NPCGossipMemory[] existingNpcs = UnityEngine.Object.FindObjectsByType<NPCGossipMemory>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+
+            HashSet<string> existingNames = new HashSet<string>(
+                existingNpcs.Select(npc => npc.NpcName),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (!existingNames.Contains(baseName))
+            {
+                return baseName;
+            }
+
+            int suffix = 1;
+            string candidate = $"{baseName}_{suffix}";
+            while (existingNames.Contains(candidate))
+            {
+                suffix++;
+                candidate = $"{baseName}_{suffix}";
+            }
+
+            return candidate;
+        }
+
         // --- Core Generation Pipeline ---
 
         /// <summary>
@@ -234,7 +270,11 @@ namespace Project.CustomEditor
             }
 
             // Step 1: Core Node Layout
-            GameObject rootInstance = new GameObject($"NPC_AssetStore_{_npcName}");
+            // v6: Resolve a collision-free name before anything else, so it's used
+            // consistently for the GameObject, NpcName, and the saved profile asset.
+            string resolvedName = GetUniqueNpcName(_npcName);
+
+            GameObject rootInstance = new GameObject($"NPC_AssetStore_{resolvedName}");
             Undo.RegisterCreatedObjectUndo(rootInstance, "Create Modular NPC Root");
 
             // Step 2: Visuals & Animator Automation
@@ -273,7 +313,7 @@ namespace Project.CustomEditor
             proxCollider.radius = 4.0f;
 
             NPCGossipMemory localMemory = rootInstance.AddComponent<NPCGossipMemory>();
-            localMemory.NpcName = _npcName;
+            localMemory.NpcName = resolvedName;
 
             NPCProximityGossip proximityLogic = rootInstance.AddComponent<NPCProximityGossip>();
             rootInstance.AddComponent<AudioSource>();
@@ -417,7 +457,7 @@ namespace Project.CustomEditor
 
             // Step 6: Data Compilation & Explicit Seeding
             NPCArchetypeConfiguration dataConfig = ScriptableObject.CreateInstance<NPCArchetypeConfiguration>();
-            dataConfig.DefaultName = _npcName;
+            dataConfig.DefaultName = resolvedName;
             dataConfig.RigStyle = _rigType;
             // BrainStyle uses NPCArchetypeConfiguration's own default (FixedScripted).
             dataConfig.InteractionPromptText = _promptTextString;
@@ -436,7 +476,7 @@ namespace Project.CustomEditor
             // before saving, instead of dumping the asset into Assets/ root.
             EnsureFolderExists(_outputFolderPath);
 
-            string safeName = string.IsNullOrWhiteSpace(_npcName) ? "Unnamed" : _npcName.Replace(" ", "_");
+            string safeName = string.IsNullOrWhiteSpace(resolvedName) ? "Unnamed" : resolvedName.Replace(" ", "_");
             string uniquePath = $"{_outputFolderPath}/NPC_Profile_{safeName}_{System.DateTime.Now.Ticks}.asset";
             AssetDatabase.CreateAsset(dataConfig, uniquePath);
             AssetDatabase.SaveAssets();
@@ -447,10 +487,14 @@ namespace Project.CustomEditor
             serializedProximity.ApplyModifiedProperties();
 
             Selection.activeGameObject = rootInstance;
-            // v4: Ping the generated profile asset in the Project window so it's easy to find.
+            // Ping the generated profile asset in the Project window so it's easy to find.
             EditorGUIUtility.PingObject(dataConfig);
 
-            EditorUtility.DisplayDialog("Success!", $"Compiled an Asset-Ready {_selectedVariant.ToString()} prefab.\n\nProfile saved to:\n{uniquePath}", "Perfect");
+            string nameNote = resolvedName != _npcName
+                ? $"\n\nNote: '{_npcName}' was already in use — this NPC was named '{resolvedName}' instead."
+                : "";
+
+            EditorUtility.DisplayDialog("Success!", $"Compiled an Asset-Ready {_selectedVariant.ToString()} prefab.\n\nProfile saved to:\n{uniquePath}{nameNote}", "Perfect");
         }
     }
 }
