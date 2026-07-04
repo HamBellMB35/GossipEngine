@@ -873,9 +873,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 80fdc01696f46c047826925d5e8bb078, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Project.GamePlay.GossipTester
-  _targetNpc: {fileID: 1181529736}
+  _targetNpc: {fileID: 0}
   _rumorToTest: {fileID: 11400000, guid: 38889bd1d51293c4aaf1082644d6e96b, type: 2}
-  _initialCredibility: 0.85
+  _initialCredibility: 0.81
   _testTriggerKey: 21
 --- !u!4 &654783805
 Transform:
@@ -1331,7 +1331,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!82 &1181529734
 AudioSource:
   m_ObjectHideFlags: 0

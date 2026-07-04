@@ -18,5 +18,5 @@ MonoBehaviour:
   VoiceLineAudio: {fileID: 8300000, guid: 80b252adc0ae0ae47a4bbd389909adc0, type: 3}
   AssociatedTone: {fileID: 11400000, guid: 37e2a6ade7da9a44fb8abe37c30aa0f1, type: 2}
   TriggerMode: 0
-  ShareLikelihood: 100
+  ShareLikelihood: 62
   TriggerDistance: 3

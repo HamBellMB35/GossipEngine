@@ -146,9 +146,9 @@ namespace Project.CustomEditor
             _canvasHeightOffset = EditorGUILayout.FloatField("Canvas Height Offset (3D)", _canvasHeightOffset);
             _dialogueFontSize = EditorGUILayout.FloatField("Speech Bubble Font Size", _dialogueFontSize);
 
-            GUI.enabled = false;
-            _canvasDimensions = EditorGUILayout.Vector2Field("Master Canvas Dimensions (Locked)", _canvasDimensions);
-            GUI.enabled = true;
+            // v5: Unlocked — Master Canvas Dimensions is now fully editable instead of
+            // GUI.enabled-locked to a fixed 150x35 value.
+            _canvasDimensions = EditorGUILayout.Vector2Field("Master Canvas Dimensions", _canvasDimensions);
 
             EditorGUILayout.Space();
             _promptBgColor = EditorGUILayout.ColorField("Interaction Prompt BG Color", _promptBgColor);
@@ -277,6 +277,14 @@ namespace Project.CustomEditor
 
             NPCProximityGossip proximityLogic = rootInstance.AddComponent<NPCProximityGossip>();
             rootInstance.AddComponent<AudioSource>();
+
+            // v5: Every generated NPC now gets an NPCAnimationBridge automatically — previously
+            // this had to be added by hand, meaning tone-driven animation and the exit-revert
+            // fix silently didn't work until someone noticed and added it manually.
+            NPCAnimationBridge animBridge = rootInstance.AddComponent<NPCAnimationBridge>();
+            SerializedObject serializedAnimBridge = new SerializedObject(animBridge);
+            serializedAnimBridge.FindProperty("_animator").objectReferenceValue = characterAnimator;
+            serializedAnimBridge.ApplyModifiedProperties();
 
             // Every generated NPC gets an NpcAddonRegistry so add-ons (Vendor, Quest Giver, etc.)
             // are discoverable at runtime via TryGetAddon<T>() instead of raw GetComponent calls.
