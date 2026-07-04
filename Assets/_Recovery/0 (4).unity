@@ -874,7 +874,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Project.GamePlay.GossipTester
   _targetNpc: {fileID: 1181529736}
-  _rumorToTest: {fileID: 11400000, guid: 38889bd1d51293c4aaf1082644d6e96b, type: 2}
+  _rumorToTest: {fileID: 11400000, guid: 66208582f116ae9429e70a0f27d19a9b, type: 2}
   _initialCredibility: 0.85
   _testTriggerKey: 21
 --- !u!4 &654783805

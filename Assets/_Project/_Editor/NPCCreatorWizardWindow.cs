@@ -12,10 +12,11 @@ namespace Project.CustomEditor
     // NOTE: This wizard automates the creation of modular NPC prefabs.
     // The CanvasGroup hierarchy has been permanently patched, and UI font sizing is now fully exposed for Asset Store distribution.
     //
-    // v1: Removed the "Conversation Engine" (_brainType) field. It previously defaulted
-    // to the now-deleted GenerativeAI option. NPCArchetypeConfiguration.BrainStyle now
-    // always defaults to FixedScripted (its own class default), so the wizard no longer
-    // needs to set it explicitly.
+    // v4: Generated NPCArchetypeConfiguration assets no longer dump into Assets/ root.
+    // Added a configurable Output Folder field (with Browse button) that's auto-created,
+    // including nested subfolders, if it doesn't already exist. Also added UX polish: the
+    // Generate button is now disabled with an explanatory HelpBox instead of only failing
+    // after the click, and the generated asset is pinged in the Project window.
 
     /// <summary>
     /// Professional asset store pipeline wizard window that dynamically scans project assemblies.
@@ -30,6 +31,10 @@ namespace Project.CustomEditor
 
         private enum NpcVariantType { CommonNPC, VendorNPC, QuestGiverNPC }
         private NpcVariantType _selectedVariant = NpcVariantType.CommonNPC;
+
+        // --- Output Settings ---
+        [Tooltip("Where generated NPC profile assets are saved. Created automatically (including subfolders) if it doesn't exist.")]
+        private string _outputFolderPath = "Assets/NPC Creator/Generated Profiles";
 
         // --- Editable UI & Prompt Parameters ---
         private string _promptTextString = "Talk [E]";
@@ -49,7 +54,7 @@ namespace Project.CustomEditor
         public static void ShowWindow()
         {
             NPCCreatorWizardWindow window = GetWindow<NPCCreatorWizardWindow>("NPC Creator Wizard");
-            window.minSize = new Vector2(480, 660);
+            window.minSize = new Vector2(480, 700);
             window.Show();
         }
 
@@ -73,6 +78,33 @@ namespace Project.CustomEditor
             _npcName = EditorGUILayout.TextField("NPC Display Name", _npcName);
             _meshModel = (GameObject)EditorGUILayout.ObjectField("3D Mesh Asset / Prefab", _meshModel, typeof(GameObject), false);
             _rigType = (AnimationRigType)EditorGUILayout.EnumPopup("Animation Rig Setup", _rigType);
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space();
+
+            // v4: Output Settings — where generated profile assets get saved.
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("Output Settings", EditorStyles.boldLabel);
+            EditorGUILayout.BeginHorizontal();
+            _outputFolderPath = EditorGUILayout.TextField("Profile Output Folder", _outputFolderPath);
+            if (GUILayout.Button("Browse...", GUILayout.Width(70)))
+            {
+                string selected = EditorUtility.OpenFolderPanel("Select Output Folder", "Assets", "");
+                if (!string.IsNullOrEmpty(selected))
+                {
+                    string relativePath = ConvertToProjectRelativePath(selected);
+                    if (relativePath != null)
+                    {
+                        _outputFolderPath = relativePath;
+                    }
+                    else
+                    {
+                        EditorUtility.DisplayDialog("Invalid Folder", "Please choose a folder inside this project's Assets directory.", "OK");
+                    }
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.HelpBox("This folder will be created automatically (including subfolders) if it doesn't already exist.", MessageType.None);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
@@ -128,12 +160,64 @@ namespace Project.CustomEditor
 
             GUILayout.FlexibleSpace();
 
-            GUI.backgroundColor = Color.green;
+            // v4: Generate button is now disabled (with an explanation) instead of only
+            // failing after the click — buyers see why they can't proceed immediately.
+            bool canGenerate = _meshModel != null;
+            if (!canGenerate)
+            {
+                EditorGUILayout.HelpBox("Assign a 3D Mesh Asset / Prefab above before generating.", MessageType.Warning);
+            }
+
+            GUI.enabled = canGenerate;
+            GUI.backgroundColor = canGenerate ? Color.green : Color.gray;
             if (GUILayout.Button($"GENERATE COMPLETE {_selectedVariant.ToString().ToUpper()}", GUILayout.Height(45)))
             {
                 ExecuteEntityGeneration();
             }
             GUI.backgroundColor = Color.white;
+            GUI.enabled = true;
+        }
+
+        // --- Output Folder Helpers ---
+
+        /// <summary>
+        /// Converts an absolute OS path (from OpenFolderPanel) into a project-relative
+        /// "Assets/..." path. Returns null if the folder isn't inside this project.
+        /// </summary>
+        private string ConvertToProjectRelativePath(string absolutePath)
+        {
+            string projectDataPath = Application.dataPath.Replace("\\", "/");
+            string normalizedAbsolute = absolutePath.Replace("\\", "/");
+
+            if (!normalizedAbsolute.StartsWith(projectDataPath))
+            {
+                return null;
+            }
+
+            string relative = "Assets" + normalizedAbsolute.Substring(projectDataPath.Length);
+            return relative;
+        }
+
+        /// <summary>
+        /// Creates every missing folder along the given path (e.g. "Assets/NPC Creator/Generated Profiles"
+        /// creates both "NPC Creator" and "Generated Profiles" if neither exists yet).
+        /// </summary>
+        private static void EnsureFolderExists(string folderPath)
+        {
+            if (AssetDatabase.IsValidFolder(folderPath)) return;
+
+            string[] parts = folderPath.Split('/');
+            string currentPath = parts[0]; // Expected to be "Assets"
+
+            for (int i = 1; i < parts.Length; i++)
+            {
+                string nextPath = $"{currentPath}/{parts[i]}";
+                if (!AssetDatabase.IsValidFolder(nextPath))
+                {
+                    AssetDatabase.CreateFolder(currentPath, parts[i]);
+                }
+                currentPath = nextPath;
+            }
         }
 
         // --- Core Generation Pipeline ---
@@ -194,7 +278,7 @@ namespace Project.CustomEditor
             NPCProximityGossip proximityLogic = rootInstance.AddComponent<NPCProximityGossip>();
             rootInstance.AddComponent<AudioSource>();
 
-            // v3: Every generated NPC gets an NpcAddonRegistry so add-ons (Vendor, Quest Giver, etc.)
+            // Every generated NPC gets an NpcAddonRegistry so add-ons (Vendor, Quest Giver, etc.)
             // are discoverable at runtime via TryGetAddon<T>() instead of raw GetComponent calls.
             rootInstance.AddComponent<NpcAddonRegistry>();
 
@@ -327,8 +411,7 @@ namespace Project.CustomEditor
             NPCArchetypeConfiguration dataConfig = ScriptableObject.CreateInstance<NPCArchetypeConfiguration>();
             dataConfig.DefaultName = _npcName;
             dataConfig.RigStyle = _rigType;
-            // v1: BrainStyle no longer set here — it uses NPCArchetypeConfiguration's own
-            // default (FixedScripted), since GenerativeAI is no longer a valid option.
+            // BrainStyle uses NPCArchetypeConfiguration's own default (FixedScripted).
             dataConfig.InteractionPromptText = _promptTextString;
             dataConfig.UiVerticalOffsetHeight = _canvasHeightOffset;
 
@@ -341,16 +424,25 @@ namespace Project.CustomEditor
             dataConfig.ScriptedDialogues = new System.Collections.Generic.List<ScriptedResponsePacket>();
             dataConfig.ScriptedDialogues.Add(placeholderLine);
 
-            string uniquePath = $"Assets/New_NPC_Profile_{_npcName}_{System.DateTime.Now.Ticks}.asset";
+            // v4: Ensure the configured output folder (and any missing parent folders) exists
+            // before saving, instead of dumping the asset into Assets/ root.
+            EnsureFolderExists(_outputFolderPath);
+
+            string safeName = string.IsNullOrWhiteSpace(_npcName) ? "Unnamed" : _npcName.Replace(" ", "_");
+            string uniquePath = $"{_outputFolderPath}/NPC_Profile_{safeName}_{System.DateTime.Now.Ticks}.asset";
             AssetDatabase.CreateAsset(dataConfig, uniquePath);
             AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
 
             SerializedObject serializedProximity = new SerializedObject(proximityLogic);
             serializedProximity.FindProperty("archetypeConfig").objectReferenceValue = dataConfig;
             serializedProximity.ApplyModifiedProperties();
 
             Selection.activeGameObject = rootInstance;
-            EditorUtility.DisplayDialog("Success!", $"Compiled an Asset-Ready {_selectedVariant.ToString()} prefab.", "Perfect");
+            // v4: Ping the generated profile asset in the Project window so it's easy to find.
+            EditorGUIUtility.PingObject(dataConfig);
+
+            EditorUtility.DisplayDialog("Success!", $"Compiled an Asset-Ready {_selectedVariant.ToString()} prefab.\n\nProfile saved to:\n{uniquePath}", "Perfect");
         }
     }
 }
