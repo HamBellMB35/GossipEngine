@@ -25,9 +25,6 @@ public class GameLifetimeScope : LifetimeScope
         // We Register a custom bootstrapper class to control frame-zero execution.
         builder.RegisterEntryPoint<GameBootstrapper>();
 
-        // v1: AI generation service and TTS voice service registrations removed.
-        // AI/LLM and TTS are no longer part of this project's pipeline.
-
         // Beacause our NPCs live directly in the scene hierarchy as GameObjects, we need to instruct our Composition Root
         // ( GameLifetimeScope ) to automatically scan the scene when it wakes up, find these NPCGossipMemory brains ( components ), 
         // and feed them the central engine dependency AKA "auto-wiring" and it saves us from having to manually drag-and-drop references in the inspector.
@@ -40,17 +37,21 @@ public class GameLifetimeScope : LifetimeScope
         // Tells VContainer to find and inject dependencies straight into our trigger script!
         builder.RegisterComponentInHierarchy<NPCProximityGossip>();
 
-        // v2: Added — this was previously only wired via the now-deleted NPCLifetimeScope,
-        // meaning NPCAnimationBridge was never actually getting its ReputationService injected.
         builder.RegisterComponentInHierarchy<NPCAnimationBridge>();
+
+        // v3: Added — NPCReputationOpinion needs ReputationService injected to compute
+        // effective opinion (general + faction + personal modifier).
+        builder.RegisterComponentInHierarchy<NPCReputationOpinion>();
 
         // We register the tester to then inject directly
         builder.RegisterComponentInHierarchy<GossipTester>();
 
-        // v2: GossipManager and ReputationService are now registered ONCE, here, at the game
-        // level. NPCLifetimeScope (which duplicated these registrations as a separate scope)
-        // has been removed. Every script in the project that requests these via [Inject] now
-        // reliably receives the same shared instance.
+        // v3: Added — lets ReputationTester receive the shared ReputationService.
+        builder.RegisterComponentInHierarchy<ReputationTester>();
+
+        // GossipManager and ReputationService are registered ONCE, here, at the game level.
+        // Every script in the project that requests these via [Inject] reliably receives the
+        // same shared instance.
         builder.Register<GossipManager>(Lifetime.Singleton);
         builder.Register<ReputationService>(Lifetime.Singleton);
 
@@ -85,17 +86,6 @@ public class GameLifetimeScope : LifetimeScope
             _gossipEngine.Initialize();
             Debug.Log("<color=yellow>[Bootstrapper]</color> Entry point achieved. Waking engines...");
             Debug.Log("<color=magenta>[Game Bootstrapper]</color> Game initialization complete. All systems are online.");
-
-
-            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            /// FOR TESTING PORPUSES ONLY: This is a temporary development block to simulate a rumor injection into our NPCs memory banks.///
-            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-            //// No searching required!
-            //if (_tester != null)
-            //{
-            //    _tester.ExecuteTestInjection();
-            //}
         }
     }
 
