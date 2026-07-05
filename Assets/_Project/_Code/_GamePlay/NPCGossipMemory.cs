@@ -6,10 +6,6 @@ using Project.Data;
 
 namespace Project.GamePlay
 {
-    // v3: KnownRumors now stores real RuntimeRumorState objects (rumor + credibility + timestamp)
-    // instead of raw ID strings. This was already a data class in the project (RuntimeRumorState)
-    // but wasn't being used anywhere — this is what lets NPCProximityGossip actually check a
-    // known rumor's TriggerMode at proximity/interaction time instead of just knowing its name.
     public class NPCGossipMemory : MonoBehaviour
     {
         [Tooltip("Display name for this NPC, used for debug logging and identification.")]
@@ -39,11 +35,21 @@ namespace Project.GamePlay
         {
             if (rumor == null) return;
 
-            bool alreadyKnown = KnownRumors.Any(state => state.SourceTemplate != null && state.SourceTemplate.RumorID == rumor.RumorID);
-            if (!alreadyKnown)
+            if (!KnowsRumor(rumor.RumorID))
             {
                 KnownRumors.Add(new RuntimeRumorState(rumor, credibility));
             }
+        }
+
+        /// <summary>
+        /// v6: Returns true if this NPC already has a rumor with the given ID in memory.
+        /// Used by the tick-based propagation loop to skip NPCs who already know a rumor,
+        /// rather than rolling ShareLikelihood pointlessly against something LearnRumor
+        /// would silently no-op on anyway.
+        /// </summary>
+        public bool KnowsRumor(string rumorId)
+        {
+            return KnownRumors.Any(state => state.SourceTemplate != null && state.SourceTemplate.RumorID == rumorId);
         }
 
         /// <summary>
@@ -73,14 +79,17 @@ namespace Project.GamePlay
 
         /// <summary>
         /// Looks through this NPC's known rumors for one matching the given TriggerMode.
-        /// Returns null if none are known. Used by NPCProximityGossip to decide what to
-        /// present on proximity-enter (AutoProximity) or on [E]-interact (ManualTalk).
+        /// AutoProximity rumors that have already been presented once are skipped, so they
+        /// don't re-fire every time the player re-enters the trigger zone. ManualTalk rumors
+        /// are always eligible, since re-triggering on [E] is expected.
+        /// Returns null if none are eligible.
         /// </summary>
         public RuntimeRumorState GetNextRumorToShare(RumorTriggerMode mode)
         {
             return KnownRumors.FirstOrDefault(state =>
                 state.SourceTemplate != null &&
-                state.SourceTemplate.TriggerMode == mode);
+                state.SourceTemplate.TriggerMode == mode &&
+                (mode != RumorTriggerMode.AutoProximity || !state.HasBeenPresented));
         }
 
         /// <summary>
@@ -92,8 +101,6 @@ namespace Project.GamePlay
         {
             if (rumor == null) return;
 
-            // v4: Text bubble now respects the rumor's ShowTextBubble toggle — a rumor can
-            // still play audio/animation while staying silent in the speech bubble.
             if (rumor.ShowTextBubble && !string.IsNullOrEmpty(rumor.RumorDisplayText))
             {
                 if (_speechBubble != null)
@@ -122,6 +129,12 @@ namespace Project.GamePlay
             if (_animationBridge != null)
             {
                 _animationBridge.PlayToneAnimation(rumor.AssociatedTone);
+            }
+
+            RuntimeRumorState matchedState = KnownRumors.FirstOrDefault(s => s.SourceTemplate != null && s.SourceTemplate.RumorID == rumor.RumorID);
+            if (matchedState != null)
+            {
+                matchedState.HasBeenPresented = true;
             }
 
             Debug.Log($"<color=cyan>[NPCGossipMemory]</color> '{gameObject.name}' presented rumor '{rumor.RumorID}'.");

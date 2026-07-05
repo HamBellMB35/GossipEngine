@@ -9,5 +9,10 @@ namespace Project.Architecture
 
         // Standardized signature to transfer data records between two distinct simulation points
         void PropagateRumor(Project.Data.RumorTemplate rumor, string sourceNpcId, string targetNpcId);
+
+        // v2: Added — runs one full tick-based propagation pass across every NPC currently
+        // in the scene. Distance-agnostic by design (proximity only matters at the witness
+        // step, not here) — see GossipTickDriver for what calls this and how often.
+        void RunPropagationTick();
     }
 }

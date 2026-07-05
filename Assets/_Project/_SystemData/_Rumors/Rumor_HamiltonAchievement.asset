@@ -19,4 +19,9 @@ MonoBehaviour:
   AssociatedTone: {fileID: 11400000, guid: 37e2a6ade7da9a44fb8abe37c30aa0f1, type: 2}
   TriggerMode: 0
   ShareLikelihood: 62
-  TriggerDistance: 3
+  TriggerDistance: 30
+  GeneralReputationImpact: -15
+  TargetFactionID: Town_People
+  FactionReputationImpact: 7
+  WitnessOpinionImpact: -40
+  HearsayCredibility: 0.4

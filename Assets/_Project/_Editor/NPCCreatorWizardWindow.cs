@@ -233,8 +233,7 @@ namespace Project.CustomEditor
             // explicit sort mode — we don't need results sorted by InstanceID here, so
             // FindObjectsSortMode.None is both correct and faster.
             NPCGossipMemory[] existingNpcs = UnityEngine.Object.FindObjectsByType<NPCGossipMemory>(
-                FindObjectsInactive.Include,
-                FindObjectsSortMode.None);
+                FindObjectsInactive.Include);
 
             HashSet<string> existingNames = new HashSet<string>(
                 existingNpcs.Select(npc => npc.NpcName),

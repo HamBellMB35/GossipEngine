@@ -16,42 +16,32 @@ public class GameLifetimeScope : LifetimeScope
     protected override void Configure(IContainerBuilder builder)
     {
         // Core Framework Systems
-        // We Register our CoreGossipEngine as a Singleton.
-        // This means VContainer creates exactly ONE instance of it in memory,
-        // and shares that exact same instance with any script that requests an IGossipEngine.
-
         builder.Register<IGossipEngine, CoreGossipEngine>(Lifetime.Singleton);
 
         // We Register a custom bootstrapper class to control frame-zero execution.
         builder.RegisterEntryPoint<GameBootstrapper>();
 
-        // Beacause our NPCs live directly in the scene hierarchy as GameObjects, we need to instruct our Composition Root
-        // ( GameLifetimeScope ) to automatically scan the scene when it wakes up, find these NPCGossipMemory brains ( components ), 
-        // and feed them the central engine dependency AKA "auto-wiring" and it saves us from having to manually drag-and-drop references in the inspector.
-
-        // Dynamic Scene Discovery Scanner
-        // We tell VContainer to scan the active scene layout and automatically bind
-        // all NPCGossipMemory scripts to our central injection framework.   
+        // Dynamic Scene Discovery Scanner — auto-wires every relevant MonoBehaviour found
+        // in the scene hierarchy, so no manual drag-and-drop references are needed.
         builder.RegisterComponentInHierarchy<NPCGossipMemory>();
-
-        // Tells VContainer to find and inject dependencies straight into our trigger script!
         builder.RegisterComponentInHierarchy<NPCProximityGossip>();
-
         builder.RegisterComponentInHierarchy<NPCAnimationBridge>();
-
-        // v3: Added — NPCReputationOpinion needs ReputationService injected to compute
-        // effective opinion (general + faction + personal modifier).
         builder.RegisterComponentInHierarchy<NPCReputationOpinion>();
 
-        // We register the tester to then inject directly
-        builder.RegisterComponentInHierarchy<GossipTester>();
+        // v4: Added — the witness step (on the Player) and the tick-based broadcast driver
+        // (a single scene-wide GameObject) both need dependencies injected.
+        builder.RegisterComponentInHierarchy<PlayerDeedBroadcaster>();
+        builder.RegisterComponentInHierarchy<GossipTickDriver>();
 
-        // v3: Added — lets ReputationTester receive the shared ReputationService.
+        // Testers
+        builder.RegisterComponentInHierarchy<GossipTester>();
         builder.RegisterComponentInHierarchy<ReputationTester>();
 
+        // v4: Added — DeedTester needs no injected dependencies itself, but registering it
+        // keeps it consistent with the other testers and future-proofs it if it ever does.
+        builder.RegisterComponentInHierarchy<DeedTester>();
+
         // GossipManager and ReputationService are registered ONCE, here, at the game level.
-        // Every script in the project that requests these via [Inject] reliably receives the
-        // same shared instance.
         builder.Register<GossipManager>(Lifetime.Singleton);
         builder.Register<ReputationService>(Lifetime.Singleton);
 
@@ -65,24 +55,16 @@ public class GameLifetimeScope : LifetimeScope
     public class GameBootstrapper : IStartable
     {
         private readonly IGossipEngine _gossipEngine;
-        private readonly GossipTester _tester; // Store the reference
+        private readonly GossipTester _tester;
 
-        // VContainer injects BOTH the engine AND the tester here automatically
         public GameBootstrapper(IGossipEngine gossipEngine, GossipTester tester)
         {
             _gossipEngine = gossipEngine;
             _tester = tester;
         }
 
-
-        /// <summary>
-        /// This is the absolute first frame of the game.
-        /// VContainer triggers this automatically as soon as the scene wakes up.
-        /// </summary>
-        //  This method is called by VContainer immediately after all dependencies are injected.
         public void Start()
         {
-            // Now we can safely initialize our core systems without worrying about scene loading order.
             _gossipEngine.Initialize();
             Debug.Log("<color=yellow>[Bootstrapper]</color> Entry point achieved. Waking engines...");
             Debug.Log("<color=magenta>[Game Bootstrapper]</color> Game initialization complete. All systems are online.");
