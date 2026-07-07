@@ -20,6 +20,13 @@ namespace Project.GamePlay
         [SerializeField] private float interactionCooldownDuration = 10f;
         [SerializeField] private float speechBubbleHideDuration = 13f;
 
+        [Header("Editor Visualization")]
+        [Tooltip("If enabled, draws a wire sphere in the Scene view showing this NPC's proximity/interaction range at all times (not just when selected).")]
+        [SerializeField] private bool _showRangeGizmo = true;
+
+        [Tooltip("Color of the range gizmo sphere.")]
+        [SerializeField] private Color _rangeGizmoColor = new Color(0f, 0.6f, 1f, 0.5f);
+
         private bool _isPlayerInZone = false;
         private bool _isOnCooldown = false;
         private NpcAddonRegistry _addonRegistry;
@@ -167,6 +174,20 @@ namespace Project.GamePlay
                 interactionPromptCanvasGroup.interactable = true;
                 interactionPromptCanvasGroup.blocksRaycasts = true;
             }
+        }
+
+        // v5: Toggleable, always-visible range gizmo. Reads the actual SphereCollider radius
+        // rather than a separately-tracked number, so it can never drift out of sync with the
+        // real trigger.
+        private void OnDrawGizmos()
+        {
+            if (!_showRangeGizmo) return;
+
+            SphereCollider triggerCollider = GetComponent<SphereCollider>();
+            if (triggerCollider == null) return;
+
+            Gizmos.color = _rangeGizmoColor;
+            Gizmos.DrawWireSphere(transform.position + triggerCollider.center, triggerCollider.radius);
         }
     }
 }
