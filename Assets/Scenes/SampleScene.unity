@@ -3500,7 +3500,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8024ca6f69e04ab4a819501118631949, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Project.GamePlay.PlayerDeedBroadcaster
-  _witnessRadius: 10
+  _witnessRadius: 30
   _npcLayerMask:
     serializedVersion: 2
     m_Bits: 4294967295

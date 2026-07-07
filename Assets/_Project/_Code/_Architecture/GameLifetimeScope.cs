@@ -36,10 +36,12 @@ public class GameLifetimeScope : LifetimeScope
         // Testers
         builder.RegisterComponentInHierarchy<GossipTester>();
         builder.RegisterComponentInHierarchy<ReputationTester>();
-
-        // v4: Added — DeedTester needs no injected dependencies itself, but registering it
-        // keeps it consistent with the other testers and future-proofs it if it ever does.
         builder.RegisterComponentInHierarchy<DeedTester>();
+
+        // v5: Added — ReputationBarUI is an OPTIONAL visualization tool. This registration
+        // simply has no effect if no ReputationBarUI exists in the scene; adding one is
+        // entirely up to you.
+        builder.RegisterComponentInHierarchy<Project.UI.ReputationBarUI>();
 
         // GossipManager and ReputationService are registered ONCE, here, at the game level.
         builder.Register<GossipManager>(Lifetime.Singleton);

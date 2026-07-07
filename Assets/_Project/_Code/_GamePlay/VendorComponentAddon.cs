@@ -48,7 +48,7 @@ namespace Project.GamePlay
             }
             Debug.Log("<color=yellow>--------------------------------------</color>");
 
-            // HOOK POINT: Trigger your premium shop canvas UI windows or screen inventory overlays here later!
+            // HOOK POINT: Trigger premium shop canvas UI windows or screen inventory overlays here later!
 
             // Return TRUE to signal the core proximity script that we have fully processed the event 
             // and that it should completely block all standard scripted dialogue streams.

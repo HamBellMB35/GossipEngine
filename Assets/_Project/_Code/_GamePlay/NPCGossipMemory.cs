@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -19,6 +20,12 @@ namespace Project.GamePlay
         [SerializeField] private AudioSource _audioSource;
         [SerializeField] private NPCAnimationBridge _animationBridge;
 
+        // v7: Added. Fires only when a rumor is actually newly added to KnownRumors (not on
+        // duplicate no-ops). Purely an optional hook — NPCGossipMemory has no idea who (if
+        // anyone) is listening. Lets fully decoupled visualization tools (e.g. NPCRumorIndicator)
+        // react without NPCGossipMemory needing any awareness of them.
+        public event Action<int> OnKnownRumorCountChanged;
+
         private void Awake()
         {
             if (_speechBubble == null) _speechBubble = GetComponentInChildren<NPCSpeechBubble>();
@@ -34,18 +41,14 @@ namespace Project.GamePlay
         public void LearnRumor(RumorTemplate rumor, float credibility)
         {
             if (rumor == null) return;
+            if (KnowsRumor(rumor.RumorID)) return;
 
-            if (!KnowsRumor(rumor.RumorID))
-            {
-                KnownRumors.Add(new RuntimeRumorState(rumor, credibility));
-            }
+            KnownRumors.Add(new RuntimeRumorState(rumor, credibility));
+            OnKnownRumorCountChanged?.Invoke(KnownRumors.Count);
         }
 
         /// <summary>
-        /// v6: Returns true if this NPC already has a rumor with the given ID in memory.
-        /// Used by the tick-based propagation loop to skip NPCs who already know a rumor,
-        /// rather than rolling ShareLikelihood pointlessly against something LearnRumor
-        /// would silently no-op on anyway.
+        /// Returns true if this NPC already has a rumor with the given ID in memory.
         /// </summary>
         public bool KnowsRumor(string rumorId)
         {
