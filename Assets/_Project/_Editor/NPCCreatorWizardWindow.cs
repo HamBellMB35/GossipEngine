@@ -52,6 +52,12 @@ namespace Project.CustomEditor
         private bool _hasVendorAddon = false;
         private bool _hasQuestAddon = false;
 
+        [Tooltip("If enabled, this NPC gets NPCRumorIndicator — an optional visual debug tool that spawns a small colored sphere above its head for each rumor it currently knows.")]
+        private bool _includeRumorIndicator = false;
+
+        [Tooltip("Optional faction this NPC belongs to, used by its NPCReputationOpinion for faction-aware effective reputation. Leave empty to use only general reputation.")]
+        private string _factionId = "";
+
         [MenuItem("Tools/NPC Creator/Launch Wizard Window")]
         public static void ShowWindow()
         {
@@ -160,6 +166,28 @@ namespace Project.CustomEditor
             EditorGUIUtility.labelWidth = originalLabelWidth;
             EditorGUILayout.EndVertical();
 
+            EditorGUILayout.Space();
+
+            // Debug/visualization add-on toggle.
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("Debug & Visualization", EditorStyles.boldLabel);
+            _includeRumorIndicator = EditorGUILayout.ToggleLeft(
+                new GUIContent("Include Rumor Indicator", "Spawns a small colored sphere above this NPC's head for each rumor it currently knows. Purely cosmetic/debug — safe to leave off."),
+                _includeRumorIndicator);
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space();
+
+            // v11: Reputation settings — every generated NPC gets NPCReputationOpinion by
+            // default (it's core infrastructure, not an optional add-on), so this just lets
+            // you set its faction at creation time instead of hunting it down afterward.
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("Reputation", EditorStyles.boldLabel);
+            _factionId = EditorGUILayout.TextField(
+                new GUIContent("Faction ID (optional)", "Sets this NPC's NPCReputationOpinion faction. Leave empty to use only general reputation."),
+                _factionId);
+            EditorGUILayout.EndVertical();
+
             GUILayout.FlexibleSpace();
 
             // v4: Generate button is now disabled (with an explanation) instead of only
@@ -255,6 +283,49 @@ namespace Project.CustomEditor
             return candidate;
         }
 
+        /// <summary>
+        /// v9: Returns the index of the given layer, creating it as a new user layer
+        /// (in the first free slot, 8-31) if it doesn't already exist. This directly edits
+        /// ProjectSettings/TagManager.asset, the same file the Tags & Layers window edits.
+        /// </summary>
+        private static int EnsureLayerExists(string layerName)
+        {
+            int existingIndex = LayerMask.NameToLayer(layerName);
+            if (existingIndex != -1) return existingIndex;
+
+            SerializedObject tagManager = new SerializedObject(
+                AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            SerializedProperty layersProp = tagManager.FindProperty("layers");
+
+            // User layers start at index 8 (0-7 are Unity's built-in layers).
+            for (int i = 8; i < layersProp.arraySize; i++)
+            {
+                SerializedProperty layerSlot = layersProp.GetArrayElementAtIndex(i);
+                if (string.IsNullOrEmpty(layerSlot.stringValue))
+                {
+                    layerSlot.stringValue = layerName;
+                    tagManager.ApplyModifiedProperties();
+                    Debug.Log($"<color=green>[NPC Creator Wizard]</color> Created new layer '{layerName}' at index {i}.");
+                    return i;
+                }
+            }
+
+            Debug.LogWarning($"<color=orange>[NPC Creator Wizard]</color> No free layer slots available (8-31 all in use) — could not create '{layerName}' layer. NPC will be left on its current layer.");
+            return -1;
+        }
+
+        /// <summary>
+        /// Sets a layer on a GameObject and every one of its children, recursively.
+        /// </summary>
+        private static void SetLayerRecursively(GameObject target, int layer)
+        {
+            target.layer = layer;
+            foreach (Transform child in target.transform)
+            {
+                SetLayerRecursively(child.gameObject, layer);
+            }
+        }
+
         // --- Core Generation Pipeline ---
 
         /// <summary>
@@ -275,6 +346,16 @@ namespace Project.CustomEditor
 
             GameObject rootInstance = new GameObject($"NPC_AssetStore_{resolvedName}");
             Undo.RegisterCreatedObjectUndo(rootInstance, "Create Modular NPC Root");
+
+            // v9: Every generated NPC defaults to the "NPC" layer (created automatically if
+            // it doesn't exist yet), applied to the whole hierarchy. This gives
+            // PlayerDeedBroadcaster's Npc Layer Mask something real to filter witness
+            // detection on, instead of leaving it at "Everything".
+            int npcLayer = EnsureLayerExists("NPC");
+            if (npcLayer != -1)
+            {
+                SetLayerRecursively(rootInstance, npcLayer);
+            }
 
             // Step 2: Visuals & Animator Automation
             GameObject meshInstance = (GameObject)PrefabUtility.InstantiatePrefab(_meshModel, rootInstance.transform);
@@ -329,6 +410,24 @@ namespace Project.CustomEditor
             // are discoverable at runtime via TryGetAddon<T>() instead of raw GetComponent calls.
             rootInstance.AddComponent<NpcAddonRegistry>();
 
+            // v11: Every generated NPC now gets NPCReputationOpinion by default — this is core
+            // Reputation System infrastructure (roadmap Section 4), not an "Advanced Add-on"
+            // like Vendor/Quest/Locomotion, so it shouldn't require opting in. Everything that
+            // reads it already null-checks for its absence, so this is purely additive.
+            NPCReputationOpinion reputationOpinion = rootInstance.AddComponent<NPCReputationOpinion>();
+            if (!string.IsNullOrEmpty(_factionId))
+            {
+                SerializedObject serializedOpinion = new SerializedObject(reputationOpinion);
+                serializedOpinion.FindProperty("_factionId").stringValue = _factionId;
+                serializedOpinion.ApplyModifiedProperties();
+            }
+
+            // v10: Optional — only added if the Include Rumor Indicator toggle was checked.
+            if (_includeRumorIndicator)
+            {
+                rootInstance.AddComponent<NPCRumorIndicator>();
+            }
+
             // Step 4: Automated Master Worldspace UI Canvas
             GameObject canvasObj = new GameObject("NPC_Worldspace_UI_Canvas");
             canvasObj.transform.SetParent(rootInstance.transform);
@@ -344,11 +443,18 @@ namespace Project.CustomEditor
             canvasRect.sizeDelta = _canvasDimensions;
             canvasRect.localScale = new Vector3(0.01f, 0.01f, 0.01f);
 
+            // v13: Added — without this, the canvas only reads correctly from whatever angle
+            // it happened to be facing when generated. Billboard keeps both the [E] prompt and
+            // the speech bubble (its children) facing the camera continuously.
+            canvasObj.AddComponent<Billboard>();
+
             // ELEMENT 1: INTERACTION PROMPT BOX (Permanently Fixed Hierarchy)
             GameObject promptBackground = new GameObject("Graphic_Placeholder_Background");
             promptBackground.transform.SetParent(canvasObj.transform, false);
 
             CanvasGroup promptCanvasGroup = promptBackground.AddComponent<CanvasGroup>();
+            // v12: Added — the [E] prompt now fades via CanvasGroupFader instead of snapping.
+            CanvasGroupFader promptFader = promptBackground.AddComponent<CanvasGroupFader>();
 
             Image promptBgImage = promptBackground.AddComponent<Image>();
             promptBgImage.color = _promptBgColor;
@@ -407,7 +513,7 @@ namespace Project.CustomEditor
             // Auto-wire proximity logic dependencies securely
             SerializedObject serializedLogic = new SerializedObject(proximityLogic);
             serializedLogic.FindProperty("speechBubble").objectReferenceValue = speechBubble;
-            serializedLogic.FindProperty("interactionPromptCanvasGroup").objectReferenceValue = promptCanvasGroup;
+            serializedLogic.FindProperty("interactionPromptFader").objectReferenceValue = promptFader;
             serializedLogic.ApplyModifiedProperties();
 
             // Step 5: Screenspace Shopping Canvas Automation

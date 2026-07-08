@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_Simple_Vanessa_the_Gossiper_1_639188150573438120
+  m_Name: NPC_Profile_New_Citizen_639190697114244164
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
-  DefaultName: Simple Vanessa the Gossiper_1
+  DefaultName: New Citizen
   RigStyle: 0
   BrainStyle: 0
   InteractionPromptText: 'Talk [E]'

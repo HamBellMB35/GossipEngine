@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_Simple_Vanessa_the_Gossiper_2_639188151915028501
+  m_Name: NPC_Profile_Harry_Loose_Tongue_McGuee_639190347739686981
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
-  DefaultName: Simple Vanessa the Gossiper_2
+  DefaultName: Harry Loose Tongue McGuee
   RigStyle: 0
   BrainStyle: 0
-  InteractionPromptText: 'Talk [E]'
+  InteractionPromptText: 'Talk [L2w]'
   UiVerticalOffsetHeight: 2.2
   SpeechBubbleCanvasSize: {x: 400, y: 200}
   CanvasWorldScale: {x: 0.01, y: 0.01, z: 0.01}

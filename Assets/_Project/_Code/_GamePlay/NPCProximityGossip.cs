@@ -2,19 +2,20 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Project.Data;
+using Project.UI;
 
 namespace Project.GamePlay
 {
-    // v4: OnTriggerExit now calls NPCAnimationBridge.ForceRevertToIdle() when the player
-    // leaves the trigger zone, so the NPC doesn't stay stuck mid-animation after the player
-    // walks away (previously OnTriggerExit only hid the interaction prompt).
+    // v6: The [E] prompt now fades in/out via CanvasGroupFader instead of snapping alpha
+    // instantly — matching NPCSpeechBubble's existing fade behavior. Fade durations are
+    // editable per-NPC on the CanvasGroupFader component itself (Fade In/Out Duration).
 
     public class NPCProximityGossip : MonoBehaviour
     {
         [Header("Dependency Mappings")]
         [SerializeField] private Project.Data.NPCArchetypeConfiguration archetypeConfig;
         [SerializeField] private Project.UI.NPCSpeechBubble speechBubble;
-        [SerializeField] private CanvasGroup interactionPromptCanvasGroup;
+        [SerializeField] private CanvasGroupFader interactionPromptFader;
 
         [Header("Gossip Timing Configurations")]
         [SerializeField] private float interactionCooldownDuration = 10f;
@@ -42,12 +43,7 @@ namespace Project.GamePlay
 
         private void Start()
         {
-            if (interactionPromptCanvasGroup != null)
-            {
-                interactionPromptCanvasGroup.alpha = 0f;
-                interactionPromptCanvasGroup.interactable = false;
-                interactionPromptCanvasGroup.blocksRaycasts = false;
-            }
+            interactionPromptFader?.SetInstant(false);
         }
 
         private void OnTriggerEnter(Collider other)
@@ -66,11 +62,9 @@ namespace Project.GamePlay
                 return; // Skip showing the [E] prompt — nothing further required from the player.
             }
 
-            if (!_isOnCooldown && interactionPromptCanvasGroup != null)
+            if (!_isOnCooldown)
             {
-                interactionPromptCanvasGroup.alpha = 1f;
-                interactionPromptCanvasGroup.interactable = true;
-                interactionPromptCanvasGroup.blocksRaycasts = true;
+                interactionPromptFader?.Show();
             }
         }
 
@@ -80,14 +74,9 @@ namespace Project.GamePlay
 
             _isPlayerInZone = false;
 
-            if (interactionPromptCanvasGroup != null)
-            {
-                interactionPromptCanvasGroup.alpha = 0f;
-                interactionPromptCanvasGroup.interactable = false;
-                interactionPromptCanvasGroup.blocksRaycasts = false;
-            }
+            interactionPromptFader?.Hide();
 
-            // v4: Don't leave the NPC frozen mid-animation just because the player walked off.
+            // Don't leave the NPC frozen mid-animation just because the player walked off.
             if (_animationBridge != null)
             {
                 _animationBridge.ForceRevertToIdle();
@@ -108,12 +97,7 @@ namespace Project.GamePlay
         {
             if (_isOnCooldown) return;
 
-            if (interactionPromptCanvasGroup != null)
-            {
-                interactionPromptCanvasGroup.alpha = 0f;
-                interactionPromptCanvasGroup.interactable = false;
-                interactionPromptCanvasGroup.blocksRaycasts = false;
-            }
+            interactionPromptFader?.Hide();
 
             IInteractionExtension extension = _addonRegistry != null
                 ? _addonRegistry.GetActiveInteractionExtension()
@@ -168,17 +152,12 @@ namespace Project.GamePlay
             yield return new WaitForSeconds(interactionCooldownDuration);
             _isOnCooldown = false;
 
-            if (_isPlayerInZone && interactionPromptCanvasGroup != null)
+            if (_isPlayerInZone)
             {
-                interactionPromptCanvasGroup.alpha = 1f;
-                interactionPromptCanvasGroup.interactable = true;
-                interactionPromptCanvasGroup.blocksRaycasts = true;
+                interactionPromptFader?.Show();
             }
         }
 
-        // v5: Toggleable, always-visible range gizmo. Reads the actual SphereCollider radius
-        // rather than a separately-tracked number, so it can never drift out of sync with the
-        // real trigger.
         private void OnDrawGizmos()
         {
             if (!_showRangeGizmo) return;
