@@ -63,6 +63,7 @@ public class GameLifetimeScope : LifetimeScope
             InjectAllInstancesOf<NPCProximityGossip>();
             InjectAllInstancesOf<NPCAnimationBridge>();
             InjectAllInstancesOf<NPCReputationOpinion>();
+            InjectAllInstancesOf<NPCGreetingResponder>();
             InjectAllInstancesOf<PlayerDeedBroadcaster>();
             InjectAllInstancesOf<GossipTickDriver>();
             InjectAllInstancesOf<GossipTester>();

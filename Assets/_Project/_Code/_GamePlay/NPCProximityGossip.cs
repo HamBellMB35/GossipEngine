@@ -33,12 +33,14 @@ namespace Project.GamePlay
         private NpcAddonRegistry _addonRegistry;
         private NPCGossipMemory _gossipMemory;
         private NPCAnimationBridge _animationBridge;
+        private NPCGreetingResponder _greetingResponder;
 
         private void Awake()
         {
             _addonRegistry = GetComponent<NpcAddonRegistry>();
             _gossipMemory = GetComponent<NPCGossipMemory>();
             _animationBridge = GetComponent<NPCAnimationBridge>();
+            _greetingResponder = GetComponent<NPCGreetingResponder>();
         }
 
         private void Start()
@@ -121,6 +123,15 @@ namespace Project.GamePlay
             if (manualRumor != null)
             {
                 _gossipMemory.PresentRumor(manualRumor.SourceTemplate);
+                return;
+            }
+
+            // v7: Reputation-driven greeting (Positive/Negative pool, gendered audio) now takes
+            // priority over the old static ScriptedDialogues pool. This is what "Non-Dialogue"
+            // NPCs (wizard toggle) rely on exclusively, since they have no NPCGossipMemory at all.
+            if (_greetingResponder != null)
+            {
+                _greetingResponder.PlayGreeting();
                 return;
             }
 

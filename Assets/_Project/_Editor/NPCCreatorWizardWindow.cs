@@ -61,6 +61,12 @@ namespace Project.CustomEditor
         [Tooltip("Which gendered voice line this NPC uses for rumor/response audio that provides both a Male and Female clip.")]
         private Project.Data.VoiceGender _voiceGender = Project.Data.VoiceGender.Male;
 
+        [Tooltip("Shared library of generic Positive/Negative reactions, used by full NPCs as their rumor fallback and by Non-Dialogue NPCs as their only response source.")]
+        private Project.Data.GeneralRumorResponseLibrary _responseLibrary;
+
+        [Tooltip("If enabled, this NPC skips the full rumor/gossip system entirely (no NPCGossipMemory, no rumor indicator, no Vendor/Quest role) and only ever greets the player with a reputation-driven Positive/Negative response. Lighter weight — intended for background/ambient NPCs.")]
+        private bool _isNonDialogueNpc = false;
+
         [MenuItem("Tools/NPC Creator/Launch Wizard Window")]
         public static void ShowWindow()
         {
@@ -123,7 +129,14 @@ namespace Project.CustomEditor
             // Conditional Archetype Targeting
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Entity Role Archetype Selection", EditorStyles.boldLabel);
+            GUI.enabled = !_isNonDialogueNpc;
             _selectedVariant = (NpcVariantType)EditorGUILayout.EnumPopup("Target NPC Variant Role", _selectedVariant);
+            GUI.enabled = true;
+
+            if (_isNonDialogueNpc)
+            {
+                _selectedVariant = NpcVariantType.CommonNPC;
+            }
 
             if (_selectedVariant == NpcVariantType.VendorNPC && !_hasVendorAddon)
             {
@@ -174,9 +187,28 @@ namespace Project.CustomEditor
             // Debug/visualization add-on toggle.
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Debug & Visualization", EditorStyles.boldLabel);
+            GUI.enabled = !_isNonDialogueNpc;
             _includeRumorIndicator = EditorGUILayout.ToggleLeft(
-                new GUIContent("Include Rumor Indicator", "Spawns a small colored sphere above this NPC's head for each rumor it currently knows. Purely cosmetic/debug — safe to leave off."),
+                new GUIContent("Include Rumor Indicator", "Spawns a small colored sphere above this NPC's head for each rumor it currently knows. Purely cosmetic/debug — safe to leave off. Unavailable on Non-Dialogue NPCs (no rumor memory to track)."),
                 _includeRumorIndicator);
+            GUI.enabled = true;
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space();
+
+            // v15: NPC complexity — Non-Dialogue toggle and the shared response library.
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("NPC Complexity", EditorStyles.boldLabel);
+            _isNonDialogueNpc = EditorGUILayout.ToggleLeft(
+                new GUIContent("Non-Dialogue NPC", "Skips the full rumor/gossip system entirely (no NPCGossipMemory, no rumor indicator, no Vendor/Quest role). Only ever greets the player with a reputation-driven Positive/Negative response. Lighter weight — intended for background/ambient NPCs."),
+                _isNonDialogueNpc);
+            if (_isNonDialogueNpc)
+            {
+                EditorGUILayout.HelpBox("Vendor/Quest roles and the Rumor Indicator are unavailable on Non-Dialogue NPCs.", MessageType.Info);
+            }
+            _responseLibrary = (Project.Data.GeneralRumorResponseLibrary)EditorGUILayout.ObjectField(
+                new GUIContent("General Response Library", "Shared Positive/Negative response pools. Required for Non-Dialogue NPCs (their only response source); optional for full NPCs (used as their rumor fallback)."),
+                _responseLibrary, typeof(Project.Data.GeneralRumorResponseLibrary), false);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
@@ -398,12 +430,35 @@ namespace Project.CustomEditor
             proxCollider.isTrigger = true;
             proxCollider.radius = 4.0f;
 
-            NPCGossipMemory localMemory = rootInstance.AddComponent<NPCGossipMemory>();
-            localMemory.NpcName = resolvedName;
+            // v15: Full NPCs get NPCGossipMemory (rumor tracking + presentation); Non-Dialogue
+            // NPCs get the lighter NPCGreetingResponder instead, with no rumor memory at all.
+            NPCGossipMemory localMemory = null;
 
-            SerializedObject serializedMemory = new SerializedObject(localMemory);
-            serializedMemory.FindProperty("_voiceGender").enumValueIndex = (int)_voiceGender;
-            serializedMemory.ApplyModifiedProperties();
+            if (!_isNonDialogueNpc)
+            {
+                localMemory = rootInstance.AddComponent<NPCGossipMemory>();
+                localMemory.NpcName = resolvedName;
+
+                SerializedObject serializedMemory = new SerializedObject(localMemory);
+                serializedMemory.FindProperty("_voiceGender").enumValueIndex = (int)_voiceGender;
+                if (_responseLibrary != null)
+                {
+                    serializedMemory.FindProperty("_responseLibrary").objectReferenceValue = _responseLibrary;
+                }
+                serializedMemory.ApplyModifiedProperties();
+            }
+            else
+            {
+                NPCGreetingResponder greetingResponder = rootInstance.AddComponent<NPCGreetingResponder>();
+
+                SerializedObject serializedGreeting = new SerializedObject(greetingResponder);
+                serializedGreeting.FindProperty("_voiceGender").enumValueIndex = (int)_voiceGender;
+                if (_responseLibrary != null)
+                {
+                    serializedGreeting.FindProperty("_responseLibrary").objectReferenceValue = _responseLibrary;
+                }
+                serializedGreeting.ApplyModifiedProperties();
+            }
 
             NPCProximityGossip proximityLogic = rootInstance.AddComponent<NPCProximityGossip>();
             rootInstance.AddComponent<AudioSource>();
@@ -432,8 +487,9 @@ namespace Project.CustomEditor
                 serializedOpinion.ApplyModifiedProperties();
             }
 
-            // v10: Optional — only added if the Include Rumor Indicator toggle was checked.
-            if (_includeRumorIndicator)
+            // Only added for full NPCs — Non-Dialogue NPCs have no NPCGossipMemory for this to
+            // require, and the toggle is disabled in the GUI for them anyway.
+            if (_includeRumorIndicator && !_isNonDialogueNpc)
             {
                 rootInstance.AddComponent<NPCRumorIndicator>();
             }
