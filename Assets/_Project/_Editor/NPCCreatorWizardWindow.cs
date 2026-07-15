@@ -58,6 +58,9 @@ namespace Project.CustomEditor
         [Tooltip("Optional faction this NPC belongs to, used by its NPCReputationOpinion for faction-aware effective reputation. Leave empty to use only general reputation.")]
         private string _factionId = "";
 
+        [Tooltip("Which gendered voice line this NPC uses for rumor/response audio that provides both a Male and Female clip.")]
+        private Project.Data.VoiceGender _voiceGender = Project.Data.VoiceGender.Male;
+
         [MenuItem("Tools/NPC Creator/Launch Wizard Window")]
         public static void ShowWindow()
         {
@@ -186,6 +189,9 @@ namespace Project.CustomEditor
             _factionId = EditorGUILayout.TextField(
                 new GUIContent("Faction ID (optional)", "Sets this NPC's NPCReputationOpinion faction. Leave empty to use only general reputation."),
                 _factionId);
+            _voiceGender = (Project.Data.VoiceGender)EditorGUILayout.EnumPopup(
+                new GUIContent("Voice Gender", "Which gendered voice line this NPC uses for rumor/response audio that provides both a Male and Female clip."),
+                _voiceGender);
             EditorGUILayout.EndVertical();
 
             GUILayout.FlexibleSpace();
@@ -394,6 +400,10 @@ namespace Project.CustomEditor
 
             NPCGossipMemory localMemory = rootInstance.AddComponent<NPCGossipMemory>();
             localMemory.NpcName = resolvedName;
+
+            SerializedObject serializedMemory = new SerializedObject(localMemory);
+            serializedMemory.FindProperty("_voiceGender").enumValueIndex = (int)_voiceGender;
+            serializedMemory.ApplyModifiedProperties();
 
             NPCProximityGossip proximityLogic = rootInstance.AddComponent<NPCProximityGossip>();
             rootInstance.AddComponent<AudioSource>();

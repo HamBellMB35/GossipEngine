@@ -11,21 +11,19 @@ namespace Project.GamePlay
     /// player performs something witnessable (a good or bad deed). This is the only place
     /// proximity matters in the whole propagation pipeline — everything after this point
     /// (tick-based NPC-to-NPC spread) is distance-agnostic by design.
-    ///
-    /// Responsibilities:
-    /// - Applies the deed's reputation impact to ReputationService exactly ONCE, regardless
-    ///   of how many NPCs witness it (world state changes once per deed, not once per witness).
-    /// - Finds every NPC within range and has each directly witness it: full credibility,
-    ///   an immediate personal reaction on their NPCReputationOpinion (if present), and an
-    ///   immediate presentation (they saw it happen, so they react right there and then).
     /// </summary>
+    // v2: Updated to use RumorTemplate's Alignment-driven signed impacts (SignedGeneralReputationImpact,
+    // SignedWitnessOpinionImpact) instead of the old separately-authored GeneralReputationImpact/
+    // FactionReputationImpact/WitnessOpinionImpact fields. Faction impact is now automatically
+    // derived at ReputationService.FactionImpactRateMultiplier of the general impact, rather
+    // than being a second number the designer has to keep in sync by hand.
     public class PlayerDeedBroadcaster : MonoBehaviour
     {
         [Tooltip("How far from the player an NPC can witness a deed.")]
         [SerializeField] private float _witnessRadius = 10f;
 
         [Tooltip("Which layers count as NPCs for witness detection. Restrict this to your NPC layer for performance once you have one set up.")]
-        [SerializeField] private LayerMask _npcLayerMask = ~0; // Defaults to Everything.
+        [SerializeField] private LayerMask _npcLayerMask = ~0;
 
         private ReputationService _reputation;
 
@@ -35,10 +33,6 @@ namespace Project.GamePlay
             _reputation = reputation;
         }
 
-        /// <summary>
-        /// Broadcasts a player deed: applies its reputation impact once, then notifies every
-        /// NPC currently within witness range.
-        /// </summary>
         public void BroadcastDeed(RumorTemplate deedRumor)
         {
             if (deedRumor == null)
@@ -60,42 +54,38 @@ namespace Project.GamePlay
                 NotifyWitness(memory, deedRumor);
             }
 
-            Debug.Log($"<color=green>[PlayerDeedBroadcaster]</color> Deed '{deedRumor.RumorID}' witnessed by {witnessed.Count} NPC(s) within {_witnessRadius}m.");
+            Debug.Log($"<color=green>[PlayerDeedBroadcaster]</color> Deed '{deedRumor.RumorID}' ({deedRumor.Alignment}) witnessed by {witnessed.Count} NPC(s) within {_witnessRadius}m.");
         }
 
         /// <summary>
-        /// Applies the deed's general/faction reputation impact exactly once. This happens
-        /// regardless of whether any NPC actually witnessed it — the deed itself is what
-        /// changes the world, not the witnessing.
+        /// Applies the deed's general/faction reputation impact exactly once, regardless of
+        /// how many NPCs witnessed it. Faction impact is always General impact scaled by
+        /// ReputationService.FactionImpactRateMultiplier — moving deliberately slower.
         /// </summary>
         private void ApplyWorldReputationImpact(RumorTemplate deedRumor)
         {
             if (_reputation == null) return;
 
-            if (deedRumor.GeneralReputationImpact != 0f)
-            {
-                _reputation.ModifyGeneralReputation(deedRumor.GeneralReputationImpact);
-            }
+            float signedGeneralImpact = deedRumor.SignedGeneralReputationImpact;
+            _reputation.ModifyGeneralReputation(signedGeneralImpact);
 
-            if (!string.IsNullOrEmpty(deedRumor.TargetFactionID) && deedRumor.FactionReputationImpact != 0f)
+            if (!string.IsNullOrEmpty(deedRumor.TargetFactionID))
             {
-                _reputation.ModifyFactionReputation(deedRumor.TargetFactionID, deedRumor.FactionReputationImpact);
+                float signedFactionImpact = signedGeneralImpact * ReputationService.FactionImpactRateMultiplier;
+                _reputation.ModifyFactionReputation(deedRumor.TargetFactionID, signedFactionImpact);
             }
         }
 
         private void NotifyWitness(NPCGossipMemory memory, RumorTemplate deedRumor)
         {
-            // Direct witness = full credibility, unlike hearsay learned via tick propagation.
             memory.LearnRumor(deedRumor, credibility: 1f);
 
             NPCReputationOpinion opinion = memory.GetComponent<NPCReputationOpinion>();
-            if (opinion != null && deedRumor.WitnessOpinionImpact != 0f)
+            if (opinion != null)
             {
-                opinion.ApplyWitnessModifier(deedRumor.WitnessOpinionImpact);
+                opinion.ApplyWitnessModifier(deedRumor.SignedWitnessOpinionImpact);
             }
 
-            // A direct witness reacts immediately — they don't wait for a later proximity
-            // check or an [E] press, since witnessing IS the trigger.
             memory.PresentRumor(deedRumor);
         }
 

@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_Harry_Loose_Tongue_McGuee_639190347739686981
+  m_Name: NPC_Profile_Brandy_the_drunk_639193432554776915
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
-  DefaultName: Harry Loose Tongue McGuee
+  DefaultName: Brandy the drunk
   RigStyle: 0
   BrainStyle: 0
-  InteractionPromptText: 'Talk [L2w]'
+  InteractionPromptText: 'Talk [E]'
   UiVerticalOffsetHeight: 2.2
   SpeechBubbleCanvasSize: {x: 400, y: 200}
   CanvasWorldScale: {x: 0.01, y: 0.01, z: 0.01}
@@ -28,3 +28,6 @@ MonoBehaviour:
   - RequiredState: 0
     ResponseText: Hello traveller! What brings you to these parts?
     VoiceLineAudio: {fileID: 0}
+  - RequiredState: 0
+    ResponseText: '''morning! Nice day for fishing ain''t it" Huh huh'
+    VoiceLineAudio: {fileID: 8300000, guid: 80b252adc0ae0ae47a4bbd389909adc0, type: 3}

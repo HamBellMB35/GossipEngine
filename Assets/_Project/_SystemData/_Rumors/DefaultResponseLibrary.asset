@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dfae303955f0b9245b888af44b530e83, type: 3}
+  m_Name: DefaultResponseLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::Project.Data.GeneralRumorResponseLibrary
+  PositiveResponses:
+  - ResponseText: Default positive Library Reponse  1
+    MaleVoiceLine: {fileID: 8300000, guid: 996a8a2ce79dd334291402c8051dc5f4, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: d26bf8e3c5c78184ab4209f083db92e5, type: 3}
+  - ResponseText: Default positive Library Reponse  2
+    MaleVoiceLine: {fileID: 8300000, guid: 6e824b81b79b30e42a89772eee31629d, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: b0fc8c98f1c475d4b8ed97a69c059560, type: 3}
+  NegativeResponses:
+  - ResponseText: Default negative library response 2
+    MaleVoiceLine: {fileID: 8300000, guid: 41dc8db037173b54a9839e52fdabaf2a, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: 0b9c52506ddbbd843bb21cf69b539c7b, type: 3}
+  - ResponseText: Default negative library response 2
+    MaleVoiceLine: {fileID: 8300000, guid: 756c63794effa664992855e3abfd4525, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: 6ea371987fd26934fa236eb03a3115bf, type: 3}

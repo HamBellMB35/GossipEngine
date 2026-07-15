@@ -1,13 +1,47 @@
+using System.Collections.Generic;
 using UnityEngine;
+using Project.Data;
 
 namespace Project.Services
 {
+    // v2: Added real functionality. Tracks, per RumorID, how many times a Specific Response
+    // has been used ACROSS ALL NPCs (not per-NPC) — this is what makes a rumor's unique
+    // reactions eventually "go stale" and fall back to the general Positive/Negative pool.
     public class GossipManager
     {
-        // This is the method your GossipTester is looking for
+        private readonly Dictionary<string, int> _specificResponseUsageCounts = new Dictionary<string, int>();
+
+        // Kept for backward compatibility with existing callers (e.g. GossipTester).
         public void UpdateRumor(int rumorId)
         {
             Debug.Log($"<color=blue>[Gossip]</color> Rumor {rumorId} processed.");
+        }
+
+        /// <summary>
+        /// Returns the next Specific Response to use for this rumor (rotating through its
+        /// list, not repeating the same one back to back), or null if the rumor's
+        /// SpecificResponseUsageLimit has already been reached — signaling the caller to fall
+        /// back to the general Positive/Negative pool instead. Increments the shared usage
+        /// counter for this rumor each time a specific response is actually used.
+        /// </summary>
+        public RumorResponse? GetSpecificResponse(RumorTemplate rumor)
+        {
+            if (rumor == null || rumor.SpecificResponses == null || rumor.SpecificResponses.Count == 0)
+            {
+                return null;
+            }
+
+            int currentCount = _specificResponseUsageCounts.TryGetValue(rumor.RumorID, out int existing) ? existing : 0;
+
+            if (currentCount >= rumor.SpecificResponseUsageLimit)
+            {
+                return null;
+            }
+
+            RumorResponse response = rumor.SpecificResponses[currentCount % rumor.SpecificResponses.Count];
+            _specificResponseUsageCounts[rumor.RumorID] = currentCount + 1;
+
+            return response;
         }
     }
 }

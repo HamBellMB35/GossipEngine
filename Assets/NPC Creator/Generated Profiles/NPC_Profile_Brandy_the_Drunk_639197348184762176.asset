@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_New_Citizen_639190697114244164
+  m_Name: NPC_Profile_Brandy_the_Drunk_639197348184762176
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
-  DefaultName: New Citizen
+  DefaultName: Brandy the Drunk
   RigStyle: 0
   BrainStyle: 0
   InteractionPromptText: 'Talk [E]'
@@ -26,5 +26,8 @@ MonoBehaviour:
   InitialSadness: 0
   ScriptedDialogues:
   - RequiredState: 0
-    ResponseText: Hello traveller! What brings you to these parts?
-    VoiceLineAudio: {fileID: 0}
+    ResponseText: Female Default NPC Audio 1
+    VoiceLineAudio: {fileID: 8300000, guid: b83a1116b1281d7428a461431194b44c, type: 3}
+  - RequiredState: 0
+    ResponseText: Female Default NPC Audio 2
+    VoiceLineAudio: {fileID: 8300000, guid: 7fe384f404e7897429668720e294fa2d, type: 3}

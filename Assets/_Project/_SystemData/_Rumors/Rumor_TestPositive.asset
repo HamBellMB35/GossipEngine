@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 989607cddf0946f4faf9da0dd283ba04, type: 3}
+  m_Name: Rumor_TestPositive
+  m_EditorClassIdentifier: Assembly-CSharp::Project.Data.RumorTemplate
+  RumorID: Test_Positive
+  Alignment: 0
+  ShowTextBubble: 1
+  RumorDisplayText: THIS IS A PRESENTATION FALLBACK
+  VoiceLineAudio: {fileID: 8300000, guid: 44c588c9913a3fa46982f738d1aff5cd, type: 3}
+  SpecificResponses:
+  - ResponseText: This is a specific rumor response 1
+    MaleVoiceLine: {fileID: 8300000, guid: 96b411d709e09c246ba8b29ac4dedee3, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: 0112c349f89ca524c9c8608ee626a6aa, type: 3}
+  - ResponseText: This is a specific rumor response 2
+    MaleVoiceLine: {fileID: 8300000, guid: 55eda9fa6cbf0a74b94228e715d2d9b4, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: de3d64521b053684aae5df775d7ff79a, type: 3}
+  SpecificResponseUsageLimit: 4
+  AssociatedTone: {fileID: 11400000, guid: e6a6c531fcd49e04ab01f801956fde78, type: 2}
+  TriggerMode: 0
+  ShareLikelihood: 100
+  TriggerDistance: 3
+  GeneralReputationMagnitude: 15
+  TargetFactionID: TownGuard
+  WitnessOpinionMagnitude: 30
+  HearsayCredibility: 0.766

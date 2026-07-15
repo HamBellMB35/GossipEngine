@@ -2,11 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using VContainer;
 using Project.UI;
 using Project.Data;
+using Project.Services;
 
 namespace Project.GamePlay
 {
+    // v8: PresentRumor now chooses WHAT to say from three tiers, in order:
+    // 1. The rumor's own SpecificResponses (rotated, shared usage count game-wide via
+    //    GossipManager) — fresh, unique reactions to this specific piece of gossip.
+    // 2. Once those are exhausted, the general Positive/Negative pool (GeneralRumorResponseLibrary),
+    //    chosen by the PLAYER'S CURRENT REPUTATION as seen by this NPC — not by the rumor's own
+    //    Alignment. This is what makes NPCs eventually just react to "how do I feel about the
+    //    player right now" instead of endlessly repeating specific gossip content.
+    // 3. The rumor's own RumorDisplayText/VoiceLineAudio, as an always-available fallback if
+    //    neither of the above produced anything (e.g. minimal setup with no response arrays).
     public class NPCGossipMemory : MonoBehaviour
     {
         [Tooltip("Display name for this NPC, used for debug logging and identification.")]
@@ -20,24 +31,35 @@ namespace Project.GamePlay
         [SerializeField] private AudioSource _audioSource;
         [SerializeField] private NPCAnimationBridge _animationBridge;
 
-        // v7: Added. Fires only when a rumor is actually newly added to KnownRumors (not on
-        // duplicate no-ops). Purely an optional hook — NPCGossipMemory has no idea who (if
-        // anyone) is listening. Lets fully decoupled visualization tools (e.g. NPCRumorIndicator)
-        // react without NPCGossipMemory needing any awareness of them.
+        [Header("Fallback Response Pool")]
+        [Tooltip("Shared library of generic Positive/Negative reactions, used once a rumor's own Specific Responses are exhausted. Safe to leave empty — the rumor's own default text/audio will be used instead.")]
+        [SerializeField] private GeneralRumorResponseLibrary _responseLibrary;
+
+        [Header("Voice Settings")]
+        [Tooltip("Which gendered voice line this NPC uses when a response provides both. Falls back to whichever clip is actually assigned if the selected gender's is empty.")]
+        [SerializeField] private VoiceGender _voiceGender = VoiceGender.Male;
+
         public event Action<int> OnKnownRumorCountChanged;
+
+        private NPCReputationOpinion _reputationOpinion;
+        private GossipManager _gossipManager;
+        private ReputationService _reputationService;
+
+        [Inject]
+        public void Construct(GossipManager gossipManager, ReputationService reputationService)
+        {
+            _gossipManager = gossipManager;
+            _reputationService = reputationService;
+        }
 
         private void Awake()
         {
             if (_speechBubble == null) _speechBubble = GetComponentInChildren<NPCSpeechBubble>();
             if (_audioSource == null) _audioSource = GetComponent<AudioSource>();
             if (_animationBridge == null) _animationBridge = GetComponent<NPCAnimationBridge>();
+            _reputationOpinion = GetComponent<NPCReputationOpinion>();
         }
 
-        /// <summary>
-        /// Adds a rumor to this NPC's memory. Called by the Gossip system when
-        /// this NPC witnesses an event or receives a rumor from another NPC.
-        /// Does nothing if this NPC already knows this rumor (by RumorID).
-        /// </summary>
         public void LearnRumor(RumorTemplate rumor, float credibility)
         {
             if (rumor == null) return;
@@ -47,19 +69,11 @@ namespace Project.GamePlay
             OnKnownRumorCountChanged?.Invoke(KnownRumors.Count);
         }
 
-        /// <summary>
-        /// Returns true if this NPC already has a rumor with the given ID in memory.
-        /// </summary>
         public bool KnowsRumor(string rumorId)
         {
             return KnownRumors.Any(state => state.SourceTemplate != null && state.SourceTemplate.RumorID == rumorId);
         }
 
-        /// <summary>
-        /// Learns a rumor and, if its TriggerMode is AutoProximity, immediately presents it
-        /// (text + optional audio + tone animation). ManualTalk rumors are learned but not
-        /// auto-presented — they surface later via NPCProximityGossip when the player interacts.
-        /// </summary>
         public void LearnAndPresentRumor(RumorTemplate rumor, float credibility)
         {
             if (rumor == null)
@@ -80,13 +94,6 @@ namespace Project.GamePlay
             }
         }
 
-        /// <summary>
-        /// Looks through this NPC's known rumors for one matching the given TriggerMode.
-        /// AutoProximity rumors that have already been presented once are skipped, so they
-        /// don't re-fire every time the player re-enters the trigger zone. ManualTalk rumors
-        /// are always eligible, since re-triggering on [E] is expected.
-        /// Returns null if none are eligible.
-        /// </summary>
         public RuntimeRumorState GetNextRumorToShare(RumorTriggerMode mode)
         {
             return KnownRumors.FirstOrDefault(state =>
@@ -96,19 +103,50 @@ namespace Project.GamePlay
         }
 
         /// <summary>
-        /// Presents a rumor on this NPC right now: shows its display text in the speech bubble,
-        /// plays its optional voice line, and plays its associated tone's animation (respecting
-        /// PlaybackMode: None = no animation, PlayOnce/Loop = play then auto-revert to Idle).
+        /// Presents a rumor on this NPC right now. See the class-level comment above for the
+        /// three-tier content selection (Specific Response -> General pool by player standing
+        /// -> rumor's own default text/audio). Animation is always driven by the rumor's own
+        /// AssociatedTone, regardless of which text/audio tier was used.
         /// </summary>
         public void PresentRumor(RumorTemplate rumor)
         {
             if (rumor == null) return;
 
-            if (rumor.ShowTextBubble && !string.IsNullOrEmpty(rumor.RumorDisplayText))
+            RumorResponse? specificResponse = _gossipManager?.GetSpecificResponse(rumor);
+            RumorResponse? chosenResponse;
+
+            if (specificResponse != null)
+            {
+                chosenResponse = specificResponse;
+            }
+            else if (_responseLibrary != null)
+            {
+                RumorAlignment fallbackPool = GetPlayerStandingAlignment();
+                chosenResponse = _responseLibrary.GetRandomResponse(fallbackPool);
+            }
+            else
+            {
+                chosenResponse = null;
+            }
+
+            string textToShow = (chosenResponse.HasValue && !string.IsNullOrEmpty(chosenResponse.Value.ResponseText))
+                ? chosenResponse.Value.ResponseText
+                : rumor.RumorDisplayText;
+
+            AudioClip audioToPlay = chosenResponse.HasValue
+                ? chosenResponse.Value.GetVoiceLine(_voiceGender)
+                : null;
+
+            if (audioToPlay == null)
+            {
+                audioToPlay = rumor.VoiceLineAudio;
+            }
+
+            if (rumor.ShowTextBubble && !string.IsNullOrEmpty(textToShow))
             {
                 if (_speechBubble != null)
                 {
-                    _speechBubble.DisplayText(rumor.RumorDisplayText);
+                    _speechBubble.DisplayText(textToShow);
                 }
                 else
                 {
@@ -116,16 +154,16 @@ namespace Project.GamePlay
                 }
             }
 
-            if (rumor.VoiceLineAudio != null)
+            if (audioToPlay != null)
             {
                 if (_audioSource != null)
                 {
-                    _audioSource.clip = rumor.VoiceLineAudio;
+                    _audioSource.clip = audioToPlay;
                     _audioSource.Play();
                 }
                 else
                 {
-                    Debug.LogWarning($"<color=orange>[NPCGossipMemory]</color> '{gameObject.name}' has a rumor voice line but no AudioSource to play it on.", this);
+                    Debug.LogWarning($"<color=orange>[NPCGossipMemory]</color> '{gameObject.name}' has a response voice line but no AudioSource to play it on.", this);
                 }
             }
 
@@ -141,6 +179,21 @@ namespace Project.GamePlay
             }
 
             Debug.Log($"<color=cyan>[NPCGossipMemory]</color> '{gameObject.name}' presented rumor '{rumor.RumorID}'.");
+        }
+
+        /// <summary>
+        /// This NPC's read on the player's current standing: its own NPCReputationOpinion
+        /// (general + faction + personal witness modifier) if present, otherwise just the
+        /// shared general reputation. Used only to pick which General pool to fall back to —
+        /// unrelated to the triggering rumor's own Alignment.
+        /// </summary>
+        private RumorAlignment GetPlayerStandingAlignment()
+        {
+            float effectiveReputation = _reputationOpinion != null
+                ? _reputationOpinion.GetEffectiveReputation()
+                : (_reputationService != null ? _reputationService.GetGeneralReputation() : 0f);
+
+            return effectiveReputation >= 0f ? RumorAlignment.Positive : RumorAlignment.Negative;
         }
     }
 }

@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 989607cddf0946f4faf9da0dd283ba04, type: 3}
+  m_Name: Rumor_TestNegative
+  m_EditorClassIdentifier: Assembly-CSharp::Project.Data.RumorTemplate
+  RumorID: Test_Negative
+  Alignment: 1
+  ShowTextBubble: 1
+  RumorDisplayText: This is a negative umor test 1 Default text
+  VoiceLineAudio: {fileID: 8300000, guid: a534986bd52df674b828eb615c6d752b, type: 3}
+  SpecificResponses:
+  - ResponseText: I heard a negative rumor test happened
+    MaleVoiceLine: {fileID: 8300000, guid: a24edc3cda50f134d863acf1379e6842, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: c26c94e52e6994c4a8c844527910022b, type: 3}
+  - ResponseText: I hear word of a negative rumor test taken place
+    MaleVoiceLine: {fileID: 8300000, guid: fb12f35edc28cee43b3c3223040a0a6f, type: 3}
+    FemaleVoiceLine: {fileID: 0}
+  SpecificResponseUsageLimit: 5
+  AssociatedTone: {fileID: 11400000, guid: 37e2a6ade7da9a44fb8abe37c30aa0f1, type: 2}
+  TriggerMode: 1
+  ShareLikelihood: 100
+  TriggerDistance: 3
+  GeneralReputationMagnitude: 15
+  TargetFactionID: TownGuard
+  WitnessOpinionMagnitude: 30
+  HearsayCredibility: 0.5

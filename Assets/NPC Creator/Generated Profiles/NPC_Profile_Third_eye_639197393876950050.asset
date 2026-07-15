@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_Harry_Loose_Tongue_McGuee_639190344379452558
+  m_Name: NPC_Profile_Third_eye_639197393876950050
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
-  DefaultName: Harry Loose Tongue McGuee
+  DefaultName: Third eye
   RigStyle: 0
   BrainStyle: 0
-  InteractionPromptText: 'Talk [L]'
+  InteractionPromptText: 'Talk [E]'
   UiVerticalOffsetHeight: 2.2
   SpeechBubbleCanvasSize: {x: 400, y: 200}
   CanvasWorldScale: {x: 0.01, y: 0.01, z: 0.01}

@@ -17,6 +17,12 @@ namespace Project.Services
         public const float MinReputation = -100f;
         public const float MaxReputation = 100f;
 
+        // v4: Added. The single source of truth for "faction reputation always changes slower
+        // than general reputation" — callers (PlayerDeedBroadcaster) multiply a deed's signed
+        // general impact by this to get the faction impact, rather than authoring two
+        // independent numbers per rumor that could drift out of the intended ratio.
+        public static float FactionImpactRateMultiplier = 0.5f;
+
         private float _generalReputation = 0f;
         private readonly Dictionary<string, float> _factionReputation = new Dictionary<string, float>();
 
