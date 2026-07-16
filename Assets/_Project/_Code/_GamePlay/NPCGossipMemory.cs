@@ -45,6 +45,11 @@ namespace Project.GamePlay
         private GossipManager _gossipManager;
         private ReputationService _reputationService;
 
+        // Same no-repeat tracking as NPCGreetingResponder, applied to this NPC's own
+        // general-pool fallback tier.
+        private int _lastPositiveIndex = -1;
+        private int _lastNegativeIndex = -1;
+
         [Inject]
         public void Construct(GossipManager gossipManager, ReputationService reputationService)
         {
@@ -122,7 +127,9 @@ namespace Project.GamePlay
             else if (_responseLibrary != null)
             {
                 RumorAlignment fallbackPool = GetPlayerStandingAlignment();
-                chosenResponse = _responseLibrary.GetRandomResponse(fallbackPool);
+                chosenResponse = fallbackPool == RumorAlignment.Positive
+                    ? _responseLibrary.GetRandomResponse(fallbackPool, ref _lastPositiveIndex)
+                    : _responseLibrary.GetRandomResponse(fallbackPool, ref _lastNegativeIndex);
             }
             else
             {

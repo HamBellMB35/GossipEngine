@@ -31,8 +31,8 @@ namespace Project.CustomEditor
         private GameObject _meshModel = null;
         private AnimationRigType _rigType = AnimationRigType.Humanoid;
 
-        private enum NpcVariantType { CommonNPC, VendorNPC, QuestGiverNPC }
-        private NpcVariantType _selectedVariant = NpcVariantType.CommonNPC;
+        private enum NpcVariantType { Common_NPC, Vendor_NPC, QuestGiver_NPC, NonDialogue_NPC }
+        private NpcVariantType _selectedVariant = NpcVariantType.Common_NPC;
 
         // --- Output Settings ---
         [Tooltip("Where generated NPC profile assets are saved. Created automatically (including subfolders) if it doesn't exist.")]
@@ -63,9 +63,6 @@ namespace Project.CustomEditor
 
         [Tooltip("Shared library of generic Positive/Negative reactions, used by full NPCs as their rumor fallback and by Non-Dialogue NPCs as their only response source.")]
         private Project.Data.GeneralRumorResponseLibrary _responseLibrary;
-
-        [Tooltip("If enabled, this NPC skips the full rumor/gossip system entirely (no NPCGossipMemory, no rumor indicator, no Vendor/Quest role) and only ever greets the player with a reputation-driven Positive/Negative response. Lighter weight — intended for background/ambient NPCs.")]
-        private bool _isNonDialogueNpc = false;
 
         [MenuItem("Tools/NPC Creator/Launch Wizard Window")]
         public static void ShowWindow()
@@ -129,24 +126,21 @@ namespace Project.CustomEditor
             // Conditional Archetype Targeting
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Entity Role Archetype Selection", EditorStyles.boldLabel);
-            GUI.enabled = !_isNonDialogueNpc;
             _selectedVariant = (NpcVariantType)EditorGUILayout.EnumPopup("Target NPC Variant Role", _selectedVariant);
-            GUI.enabled = true;
 
-            if (_isNonDialogueNpc)
-            {
-                _selectedVariant = NpcVariantType.CommonNPC;
-            }
-
-            if (_selectedVariant == NpcVariantType.VendorNPC && !_hasVendorAddon)
+            if (_selectedVariant == NpcVariantType.Vendor_NPC && !_hasVendorAddon)
             {
                 EditorGUILayout.HelpBox("⚠️ Vendor NPC selection locked! 'VendorComponentAddon.cs' was not detected.", MessageType.Warning);
-                _selectedVariant = NpcVariantType.CommonNPC;
+                _selectedVariant = NpcVariantType.Common_NPC;
             }
-            if (_selectedVariant == NpcVariantType.QuestGiverNPC && !_hasQuestAddon)
+            if (_selectedVariant == NpcVariantType.QuestGiver_NPC && !_hasQuestAddon)
             {
                 EditorGUILayout.HelpBox("⚠️ Quest Giver NPC selection locked! 'QuestComponentAddon.cs' was not detected.", MessageType.Warning);
-                _selectedVariant = NpcVariantType.CommonNPC;
+                _selectedVariant = NpcVariantType.Common_NPC;
+            }
+            if (_selectedVariant == NpcVariantType.NonDialogue_NPC)
+            {
+                EditorGUILayout.HelpBox("Skips the full rumor/gossip system entirely (no NPCGossipMemory, no rumor indicator). Only ever greets the player with a reputation-driven Positive/Negative response from the General Response Library below. Lighter weight — intended for background/ambient NPCs.", MessageType.Info);
             }
 
             EditorGUILayout.BeginHorizontal();
@@ -187,7 +181,7 @@ namespace Project.CustomEditor
             // Debug/visualization add-on toggle.
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Debug & Visualization", EditorStyles.boldLabel);
-            GUI.enabled = !_isNonDialogueNpc;
+            GUI.enabled = _selectedVariant != NpcVariantType.NonDialogue_NPC;
             _includeRumorIndicator = EditorGUILayout.ToggleLeft(
                 new GUIContent("Include Rumor Indicator", "Spawns a small colored sphere above this NPC's head for each rumor it currently knows. Purely cosmetic/debug — safe to leave off. Unavailable on Non-Dialogue NPCs (no rumor memory to track)."),
                 _includeRumorIndicator);
@@ -196,16 +190,10 @@ namespace Project.CustomEditor
 
             EditorGUILayout.Space();
 
-            // v15: NPC complexity — Non-Dialogue toggle and the shared response library.
+            // v16: NonDialogue_NPC is now a variant option (selected above) rather than a
+            // separate toggle. This section just holds the shared response library field.
             EditorGUILayout.BeginVertical("box");
-            GUILayout.Label("NPC Complexity", EditorStyles.boldLabel);
-            _isNonDialogueNpc = EditorGUILayout.ToggleLeft(
-                new GUIContent("Non-Dialogue NPC", "Skips the full rumor/gossip system entirely (no NPCGossipMemory, no rumor indicator, no Vendor/Quest role). Only ever greets the player with a reputation-driven Positive/Negative response. Lighter weight — intended for background/ambient NPCs."),
-                _isNonDialogueNpc);
-            if (_isNonDialogueNpc)
-            {
-                EditorGUILayout.HelpBox("Vendor/Quest roles and the Rumor Indicator are unavailable on Non-Dialogue NPCs.", MessageType.Info);
-            }
+            GUILayout.Label("Responses", EditorStyles.boldLabel);
             _responseLibrary = (Project.Data.GeneralRumorResponseLibrary)EditorGUILayout.ObjectField(
                 new GUIContent("General Response Library", "Shared Positive/Negative response pools. Required for Non-Dialogue NPCs (their only response source); optional for full NPCs (used as their rumor fallback)."),
                 _responseLibrary, typeof(Project.Data.GeneralRumorResponseLibrary), false);
@@ -434,7 +422,7 @@ namespace Project.CustomEditor
             // NPCs get the lighter NPCGreetingResponder instead, with no rumor memory at all.
             NPCGossipMemory localMemory = null;
 
-            if (!_isNonDialogueNpc)
+            if (_selectedVariant != NpcVariantType.NonDialogue_NPC)
             {
                 localMemory = rootInstance.AddComponent<NPCGossipMemory>();
                 localMemory.NpcName = resolvedName;
@@ -489,7 +477,7 @@ namespace Project.CustomEditor
 
             // Only added for full NPCs — Non-Dialogue NPCs have no NPCGossipMemory for this to
             // require, and the toggle is disabled in the GUI for them anyway.
-            if (_includeRumorIndicator && !_isNonDialogueNpc)
+            if (_includeRumorIndicator && _selectedVariant != NpcVariantType.NonDialogue_NPC)
             {
                 rootInstance.AddComponent<NPCRumorIndicator>();
             }
@@ -615,12 +603,12 @@ namespace Project.CustomEditor
             shopCanvasObj.SetActive(false);
 
             // Conditional Reflection Addons
-            if (_selectedVariant == NpcVariantType.VendorNPC)
+            if (_selectedVariant == NpcVariantType.Vendor_NPC)
             {
                 Type vendorType = Type.GetType("Project.GamePlay.VendorComponentAddon");
                 if (vendorType != null) rootInstance.AddComponent(vendorType);
             }
-            else if (_selectedVariant == NpcVariantType.QuestGiverNPC)
+            else if (_selectedVariant == NpcVariantType.QuestGiver_NPC)
             {
                 Type questType = Type.GetType("Project.GamePlay.QuestComponentAddon");
                 if (questType != null) rootInstance.AddComponent(questType);

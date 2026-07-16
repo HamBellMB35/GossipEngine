@@ -26,5 +26,5 @@ MonoBehaviour:
   InitialSadness: 0
   ScriptedDialogues:
   - RequiredState: 0
-    ResponseText: Hello traveller! What brings you to these parts?
-    VoiceLineAudio: {fileID: 0}
+    ResponseText: '''Morning! Nice day for fishing ain''t it?'
+    VoiceLineAudio: {fileID: 8300000, guid: 7746ec37f0bdc1242a61a9892b4694a2, type: 3}
