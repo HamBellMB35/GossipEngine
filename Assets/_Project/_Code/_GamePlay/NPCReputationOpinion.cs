@@ -27,6 +27,14 @@ namespace Project.GamePlay
         private float _personalModifier = 0f;
         private ReputationService _reputation;
 
+        // v2: Greet cooldown/boost. Reuses the existing decaying personal modifier — a greet
+        // boost isn't a separate permanent stat, it's just a temporary bump that fades over
+        // time like any other witness reaction, with a cooldown preventing spam-clicking it.
+        [Header("Greet Cooldown")]
+        [Tooltip("How long (in seconds) before this NPC can be greeted again for a reputation boost.")]
+        [SerializeField] private float _greetCooldownSeconds = 300f;
+        private float _lastGreetTime = -Mathf.Infinity;
+
         [Inject]
         public void Construct(ReputationService reputation)
         {
@@ -57,6 +65,25 @@ namespace Project.GamePlay
         public void ApplyWitnessModifier(float amount)
         {
             _personalModifier += amount;
+        }
+
+        /// <summary>True if enough time has passed since this NPC was last greeted for the boost to apply again.</summary>
+        public bool CanGreet() => Time.time - _lastGreetTime >= _greetCooldownSeconds;
+
+        /// <summary>Seconds remaining before this NPC can be greeted again. 0 if already available.</summary>
+        public float GetGreetCooldownRemaining() => Mathf.Max(0f, _greetCooldownSeconds - (Time.time - _lastGreetTime));
+
+        /// <summary>
+        /// Applies a small personal-opinion boost from being greeted, if the cooldown has
+        /// elapsed. Returns false (and does nothing) if still on cooldown.
+        /// </summary>
+        public bool TryApplyGreetBoost(float boostAmount)
+        {
+            if (!CanGreet()) return false;
+
+            ApplyWitnessModifier(boostAmount);
+            _lastGreetTime = Time.time;
+            return true;
         }
 
         /// <summary>

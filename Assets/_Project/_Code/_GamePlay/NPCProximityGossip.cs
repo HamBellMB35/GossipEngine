@@ -34,6 +34,7 @@ namespace Project.GamePlay
         private NPCGossipMemory _gossipMemory;
         private NPCAnimationBridge _animationBridge;
         private NPCGreetingResponder _greetingResponder;
+        private NPCReputationOpinion _reputationOpinion;
 
         private void Awake()
         {
@@ -41,6 +42,7 @@ namespace Project.GamePlay
             _gossipMemory = GetComponent<NPCGossipMemory>();
             _animationBridge = GetComponent<NPCAnimationBridge>();
             _greetingResponder = GetComponent<NPCGreetingResponder>();
+            _reputationOpinion = GetComponent<NPCReputationOpinion>();
         }
 
         private void Start()
@@ -107,54 +109,75 @@ namespace Project.GamePlay
 
             if (extension != null && extension.OnExtendInteraction())
             {
+                // v8: Vendor/Quest hijack behavior is UNCHANGED — instant, no menu, starts
+                // cooldown immediately, exactly as before.
+                StartCoroutine(InteractionCooldownSequence());
                 return;
             }
 
             ExecuteAmbientGreeting();
-            StartCoroutine(InteractionCooldownSequence());
         }
 
         private void ExecuteAmbientGreeting()
         {
-            RuntimeRumorState manualRumor = _gossipMemory != null
-                ? _gossipMemory.GetNextRumorToShare(RumorTriggerMode.ManualTalk)
-                : null;
-
-            if (manualRumor != null)
+            // v8: Common NPCs (have NPCGossipMemory) now open the dialogue menu instead of
+            // auto-presenting a single response. The previous "pending Manual-Talk rumor
+            // auto-presents immediately" behavior is folded into the menu's "What do you hear
+            // on the streets?" option instead — the player now asks for it explicitly.
+            if (_gossipMemory != null)
             {
-                _gossipMemory.PresentRumor(manualRumor.SourceTemplate);
-                return;
+                OpenDialogueMenu();
+                return; // Cooldown starts when the menu closes, not here — see OnDialogueMenuClosed.
             }
 
-            // v7: Reputation-driven greeting (Positive/Negative pool, gendered audio) now takes
-            // priority over the old static ScriptedDialogues pool. This is what "Non-Dialogue"
-            // NPCs (wizard toggle) rely on exclusively, since they have no NPCGossipMemory at all.
+            // Non-Dialogue NPCs: unchanged, single reputation-driven greeting, no menu.
             if (_greetingResponder != null)
             {
                 _greetingResponder.PlayGreeting();
+                StartCoroutine(InteractionCooldownSequence());
                 return;
             }
 
-            if (archetypeConfig == null) return;
-            if (archetypeConfig.ScriptedDialogues == null || archetypeConfig.ScriptedDialogues.Count == 0) return;
-
-            int randomIndex = UnityEngine.Random.Range(0, archetypeConfig.ScriptedDialogues.Count);
-            var dialoguePacket = archetypeConfig.ScriptedDialogues[randomIndex];
-
-            if (dialoguePacket.VoiceLineAudio != null)
+            // Oldest fallback, for any NPC predating both systems above.
+            if (archetypeConfig != null && archetypeConfig.ScriptedDialogues != null && archetypeConfig.ScriptedDialogues.Count > 0)
             {
-                AudioSource myAudioSource = GetComponent<AudioSource>();
-                if (myAudioSource != null)
+                int randomIndex = UnityEngine.Random.Range(0, archetypeConfig.ScriptedDialogues.Count);
+                var dialoguePacket = archetypeConfig.ScriptedDialogues[randomIndex];
+
+                if (dialoguePacket.VoiceLineAudio != null)
                 {
-                    myAudioSource.clip = dialoguePacket.VoiceLineAudio;
-                    myAudioSource.Play();
+                    AudioSource myAudioSource = GetComponent<AudioSource>();
+                    if (myAudioSource != null)
+                    {
+                        myAudioSource.clip = dialoguePacket.VoiceLineAudio;
+                        myAudioSource.Play();
+                    }
+                }
+
+                if (speechBubble != null)
+                {
+                    speechBubble.DisplayText(dialoguePacket.ResponseText);
                 }
             }
 
-            if (speechBubble != null)
+            StartCoroutine(InteractionCooldownSequence());
+        }
+
+        private void OpenDialogueMenu()
+        {
+            if (DialogueMenuUI.Instance == null)
             {
-                speechBubble.DisplayText(dialoguePacket.ResponseText);
+                Debug.LogWarning("<color=orange>[NPCProximityGossip]</color> No DialogueMenuUI found in the scene — generate one via Tools > NPC Creator > Generate Dialogue Menu UI.", this);
+                StartCoroutine(InteractionCooldownSequence());
+                return;
             }
+
+            DialogueMenuUI.Instance.Open(_gossipMemory.NpcName, _gossipMemory, _reputationOpinion, OnDialogueMenuClosed);
+        }
+
+        private void OnDialogueMenuClosed()
+        {
+            StartCoroutine(InteractionCooldownSequence());
         }
 
         private IEnumerator InteractionCooldownSequence()

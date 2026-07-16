@@ -27,4 +27,4 @@ MonoBehaviour:
   ScriptedDialogues:
   - RequiredState: 0
     ResponseText: '''Morning! Nice day for fishing ain''t it?'
-    VoiceLineAudio: {fileID: 8300000, guid: 7746ec37f0bdc1242a61a9892b4694a2, type: 3}
+    VoiceLineAudio: {fileID: 8300000, guid: 1c4c87ae4f4ecb34585ec324d65ca6ef, type: 3}

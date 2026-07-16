@@ -46,9 +46,14 @@ namespace Project.GamePlay
         private ReputationService _reputationService;
 
         // Same no-repeat tracking as NPCGreetingResponder, applied to this NPC's own
-        // general-pool fallback tier.
+        // general-pool fallback tier AND its standalone PlayGreeting() below.
         private int _lastPositiveIndex = -1;
         private int _lastNegativeIndex = -1;
+
+        // v15: Which known rumor "What do you hear on the streets?" tells next. Cycles
+        // through KnownRumors in order, wrapping around — independent of TriggerMode/
+        // HasBeenPresented, since the player is explicitly asking, not passively triggering.
+        private int _nextRumorToTellIndex = 0;
 
         [Inject]
         public void Construct(GossipManager gossipManager, ReputationService reputationService)
@@ -105,6 +110,56 @@ namespace Project.GamePlay
                 state.SourceTemplate != null &&
                 state.SourceTemplate.TriggerMode == mode &&
                 (mode != RumorTriggerMode.AutoProximity || !state.HasBeenPresented));
+        }
+
+        /// <summary>
+        /// v15: Presents a standalone reputation-driven greeting (Positive/Negative pool,
+        /// gendered audio) — the same mechanism NPCGreetingResponder uses, but reusing this
+        /// NPC's own _responseLibrary/_voiceGender fields directly rather than requiring a
+        /// separate component. Used as the opening line when the dialogue menu is opened.
+        /// </summary>
+        public void PlayGreeting()
+        {
+            if (_responseLibrary == null)
+            {
+                Debug.LogWarning($"<color=orange>[NPCGossipMemory]</color> '{gameObject.name}' has no Response Library assigned — cannot play a greeting.", this);
+                return;
+            }
+
+            RumorAlignment standing = GetPlayerStandingAlignment();
+            RumorResponse? response = standing == RumorAlignment.Positive
+                ? _responseLibrary.GetRandomResponse(standing, ref _lastPositiveIndex)
+                : _responseLibrary.GetRandomResponse(standing, ref _lastNegativeIndex);
+
+            if (response == null) return;
+
+            if (_speechBubble != null && !string.IsNullOrEmpty(response.Value.ResponseText))
+            {
+                _speechBubble.DisplayText(response.Value.ResponseText);
+            }
+
+            AudioClip clip = response.Value.GetVoiceLine(_voiceGender);
+            if (clip != null && _audioSource != null)
+            {
+                _audioSource.clip = clip;
+                _audioSource.Play();
+            }
+        }
+
+        /// <summary>
+        /// v15: Tells the next known rumor (cycling through all of them, wrapping around),
+        /// used by the dialogue menu's "What do you hear on the streets?" option — one rumor
+        /// per call. Returns false if this NPC knows nothing yet.
+        /// </summary>
+        public bool TryTellNextRumor()
+        {
+            if (KnownRumors.Count == 0) return false;
+
+            RuntimeRumorState state = KnownRumors[_nextRumorToTellIndex % KnownRumors.Count];
+            _nextRumorToTellIndex++;
+
+            PresentRumor(state.SourceTemplate);
+            return true;
         }
 
         /// <summary>
