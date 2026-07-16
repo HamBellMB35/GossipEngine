@@ -9,9 +9,9 @@ using Project.GamePlay;
 namespace Project.CustomEditor
 {
     /// <summary>
-    /// One-click generator for the shared Dialogue Menu UI (name header, scrollable option
-    /// list, Leave button). Builds the whole hierarchy and wires DialogueMenuUI automatically —
-    /// no manual ScrollRect/Button construction required.
+    /// One-click generator for the shared Dialogue Menu UI. Builds the whole hierarchy — name
+    /// header, a flexible middle region (housing either the scrollable list or the carousel
+    /// slot), and a Leave button pinned to the bottom — and wires DialogueMenuUI automatically.
     /// </summary>
     public class DialogueMenuUIWizard : EditorWindow
     {
@@ -29,7 +29,7 @@ namespace Project.CustomEditor
         {
             GUILayout.Label("Dialogue Menu UI Generator", EditorStyles.boldLabel);
             EditorGUILayout.LabelField(
-                "Builds the shared dialogue menu panel (NPC name header, scrollable option list, Leave button) and wires DialogueMenuUI automatically. Only one is needed for the whole game — it's reused and repopulated for whichever NPC the player talks to.",
+                "Builds the shared dialogue menu panel (NPC name header, options area, Leave button) and wires DialogueMenuUI automatically. Only one is needed for the whole game. Toggle List vs Carousel display mode afterward on the generated DialogueMenuUI component.",
                 EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space();
 
@@ -67,10 +67,7 @@ namespace Project.CustomEditor
             VerticalLayoutGroup panelLayout = panelObj.AddComponent<VerticalLayoutGroup>();
             panelLayout.padding = new RectOffset(16, 16, 16, 16);
             panelLayout.spacing = 10f;
-            // v2: FIX — must be true for LayoutElement's preferredHeight/flexibleHeight to have
-            // any effect at all. With this false (as it was), flexibleHeight on the scroll view
-            // was silently ignored, which is what let empty space collect below the Leave button.
-            panelLayout.childControlHeight = true;
+            panelLayout.childControlHeight = true; // Required for preferredHeight/flexibleHeight below to have any effect.
             panelLayout.childControlWidth = true;
             panelLayout.childForceExpandWidth = true;
             panelLayout.childForceExpandHeight = false;
@@ -86,24 +83,33 @@ namespace Project.CustomEditor
             LayoutElement nameLayoutElement = nameObj.AddComponent<LayoutElement>();
             nameLayoutElement.preferredHeight = 32f;
 
-            // --- Scrollable options list ---
+            // --- Flexible middle region: houses EITHER the list OR the carousel slot, both
+            // full-stretched inside it. flexibleHeight makes this absorb all leftover space,
+            // which is what actually centers the options area and pins Leave to the bottom
+            // regardless of panel size. ---
+            GameObject middleContainer = new GameObject("MiddleContainer", typeof(RectTransform));
+            middleContainer.transform.SetParent(panelObj.transform, false);
+            LayoutElement middleLayoutElement = middleContainer.AddComponent<LayoutElement>();
+            middleLayoutElement.minHeight = 200f;
+            middleLayoutElement.flexibleHeight = 1f;
+
+            // ===== List mode UI =====
             GameObject scrollObj = new GameObject("OptionsScrollView", typeof(RectTransform));
-            scrollObj.transform.SetParent(panelObj.transform, false);
+            scrollObj.transform.SetParent(middleContainer.transform, false);
+            RectTransform scrollFullRect = scrollObj.GetComponent<RectTransform>();
+            scrollFullRect.anchorMin = Vector2.zero;
+            scrollFullRect.anchorMax = Vector2.one;
+            scrollFullRect.offsetMin = Vector2.zero;
+            scrollFullRect.offsetMax = Vector2.zero;
+
             ScrollRect scrollRect = scrollObj.AddComponent<ScrollRect>();
             Image scrollBg = scrollObj.AddComponent<Image>();
             scrollBg.color = new Color(0f, 0f, 0f, 0.15f);
             Mask scrollMask = scrollObj.AddComponent<Mask>();
             scrollMask.showMaskGraphic = true;
-            LayoutElement scrollLayoutElement = scrollObj.AddComponent<LayoutElement>();
-            // v2: FIX — was a fixed preferredHeight, which left leftover panel space below the
-            // Leave button instead of the button sitting flush at the bottom. minHeight keeps
-            // it from collapsing; flexibleHeight makes it absorb all remaining space, pushing
-            // the Leave button (added after it) to the true bottom of the panel.
-            scrollLayoutElement.minHeight = 200f;
-            scrollLayoutElement.flexibleHeight = 1f;
             scrollRect.horizontal = false;
             scrollRect.vertical = true;
-            scrollRect.viewport = scrollObj.GetComponent<RectTransform>();
+            scrollRect.viewport = scrollFullRect;
 
             GameObject contentObj = new GameObject("Content", typeof(RectTransform));
             contentObj.transform.SetParent(scrollObj.transform, false);
@@ -124,7 +130,7 @@ namespace Project.CustomEditor
 
             scrollRect.content = contentRect;
 
-            // --- Option button template (built once, saved as a reusable prefab asset) ---
+            // Option button template — built once, saved as a reusable prefab asset.
             GameObject buttonTemplate = new GameObject("DialogueOptionButton", typeof(RectTransform));
             RectTransform buttonRect = buttonTemplate.GetComponent<RectTransform>();
             buttonRect.sizeDelta = new Vector2(0f, 40f);
@@ -147,6 +153,58 @@ namespace Project.CustomEditor
             string buttonPrefabPath = $"{OutputFolder}/DialogueOptionButton.prefab";
             GameObject savedButtonPrefab = PrefabUtility.SaveAsPrefabAsset(buttonTemplate, buttonPrefabPath);
             Object.DestroyImmediate(buttonTemplate);
+
+            // ===== Carousel mode UI =====
+            GameObject carouselObj = new GameObject("CarouselSlot", typeof(RectTransform));
+            carouselObj.transform.SetParent(middleContainer.transform, false);
+            RectTransform carouselFullRect = carouselObj.GetComponent<RectTransform>();
+            carouselFullRect.anchorMin = Vector2.zero;
+            carouselFullRect.anchorMax = Vector2.one;
+            carouselFullRect.offsetMin = Vector2.zero;
+            carouselFullRect.offsetMax = Vector2.zero;
+
+            VerticalLayoutGroup carouselLayout = carouselObj.AddComponent<VerticalLayoutGroup>();
+            carouselLayout.childAlignment = TextAnchor.MiddleCenter;
+            carouselLayout.spacing = 8f;
+            carouselLayout.childControlHeight = false;
+            carouselLayout.childControlWidth = true;
+            carouselLayout.childForceExpandWidth = true;
+            carouselLayout.childForceExpandHeight = false;
+
+            GameObject carouselButtonObj = new GameObject("CarouselOptionButton", typeof(RectTransform));
+            carouselButtonObj.transform.SetParent(carouselObj.transform, false);
+            RectTransform carouselButtonRect = carouselButtonObj.GetComponent<RectTransform>();
+            carouselButtonRect.sizeDelta = new Vector2(0f, 60f);
+            Image carouselButtonBg = carouselButtonObj.AddComponent<Image>();
+            carouselButtonBg.color = new Color(0.25f, 0.25f, 0.25f, 1f);
+            CanvasGroup carouselCanvasGroup = carouselButtonObj.AddComponent<CanvasGroup>();
+            Button carouselButton = carouselButtonObj.AddComponent<Button>();
+            LayoutElement carouselButtonLayoutElement = carouselButtonObj.AddComponent<LayoutElement>();
+            carouselButtonLayoutElement.preferredHeight = 60f;
+
+            GameObject carouselLabelObj = new GameObject("Label", typeof(RectTransform));
+            carouselLabelObj.transform.SetParent(carouselButtonObj.transform, false);
+            TextMeshProUGUI carouselLabel = carouselLabelObj.AddComponent<TextMeshProUGUI>();
+            carouselLabel.text = "Option";
+            carouselLabel.alignment = TextAlignmentOptions.Center;
+            carouselLabel.fontSize = 18;
+            RectTransform carouselLabelRect = carouselLabelObj.GetComponent<RectTransform>();
+            carouselLabelRect.anchorMin = Vector2.zero;
+            carouselLabelRect.anchorMax = Vector2.one;
+            carouselLabelRect.offsetMin = Vector2.zero;
+            carouselLabelRect.offsetMax = Vector2.zero;
+
+            GameObject carouselIndexObj = new GameObject("CarouselIndexText", typeof(RectTransform));
+            carouselIndexObj.transform.SetParent(carouselObj.transform, false);
+            TextMeshProUGUI carouselIndexText = carouselIndexObj.AddComponent<TextMeshProUGUI>();
+            carouselIndexText.text = "1 / 1";
+            carouselIndexText.alignment = TextAlignmentOptions.Center;
+            carouselIndexText.fontSize = 14;
+            carouselIndexText.color = new Color(1f, 1f, 1f, 0.6f);
+            LayoutElement carouselIndexLayoutElement = carouselIndexObj.AddComponent<LayoutElement>();
+            carouselIndexLayoutElement.preferredHeight = 20f;
+
+            carouselObj.SetActive(false); // List mode is the default — DialogueMenuUI.Awake() also enforces this based on _useCarouselMode.
 
             // --- Leave button ---
             GameObject leaveObj = new GameObject("LeaveButton", typeof(RectTransform));
@@ -173,9 +231,15 @@ namespace Project.CustomEditor
             SerializedObject serializedMenu = new SerializedObject(menuUI);
             serializedMenu.FindProperty("_panelFader").objectReferenceValue = panelFader;
             serializedMenu.FindProperty("_npcNameText").objectReferenceValue = nameText;
+            serializedMenu.FindProperty("_leaveButton").objectReferenceValue = leaveButton;
+            serializedMenu.FindProperty("_listModeRoot").objectReferenceValue = scrollObj;
             serializedMenu.FindProperty("_optionsContainer").objectReferenceValue = contentRect;
             serializedMenu.FindProperty("_optionButtonPrefab").objectReferenceValue = savedButtonPrefab.GetComponent<Button>();
-            serializedMenu.FindProperty("_leaveButton").objectReferenceValue = leaveButton;
+            serializedMenu.FindProperty("_carouselModeRoot").objectReferenceValue = carouselObj;
+            serializedMenu.FindProperty("_carouselOptionGroup").objectReferenceValue = carouselCanvasGroup;
+            serializedMenu.FindProperty("_carouselOptionButton").objectReferenceValue = carouselButton;
+            serializedMenu.FindProperty("_carouselOptionLabel").objectReferenceValue = carouselLabel;
+            serializedMenu.FindProperty("_carouselIndexText").objectReferenceValue = carouselIndexText;
             serializedMenu.ApplyModifiedProperties();
 
             Selection.activeGameObject = panelObj;
@@ -183,14 +247,10 @@ namespace Project.CustomEditor
 
             EditorUtility.DisplayDialog(
                 "Success!",
-                $"Dialogue Menu UI generated and wired automatically.\n\nOption button prefab saved to:\n{buttonPrefabPath}",
+                $"Dialogue Menu UI generated and wired automatically (List mode by default — toggle 'Use Carousel Mode' on DialogueMenuUI to switch).\n\nOption button prefab saved to:\n{buttonPrefabPath}",
                 "Great");
         }
 
-        /// <summary>
-        /// Finds a genuine standalone HUD canvas, skipping any canvas that belongs to an NPC's
-        /// own hierarchy (e.g. the Vendor shop canvas, which is also Screen Space - Overlay).
-        /// </summary>
         private static Canvas FindOrCreateCanvas()
         {
             Canvas[] allCanvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include);

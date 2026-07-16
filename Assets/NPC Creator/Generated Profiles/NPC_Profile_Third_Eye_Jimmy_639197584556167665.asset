@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_Third_eye_639197393876950050
+  m_Name: NPC_Profile_Third_Eye_Jimmy_639197584556167665
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
-  DefaultName: Third eye
+  DefaultName: Third Eye Jimmy
   RigStyle: 0
   BrainStyle: 0
   InteractionPromptText: 'Talk [E]'
@@ -26,5 +26,5 @@ MonoBehaviour:
   InitialSadness: 0
   ScriptedDialogues:
   - RequiredState: 0
-    ResponseText: '''Morning! Nice day for fishing ain''t it?'
-    VoiceLineAudio: {fileID: 8300000, guid: 1c4c87ae4f4ecb34585ec324d65ca6ef, type: 3}
+    ResponseText: Hello traveller! What brings you to these parts?
+    VoiceLineAudio: {fileID: 0}

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Events;
 using VContainer;
 using Project.UI;
 using Project.Data;
@@ -18,6 +19,39 @@ namespace Project.GamePlay
     //    player right now" instead of endlessly repeating specific gossip content.
     // 3. The rumor's own RumorDisplayText/VoiceLineAudio, as an always-available fallback if
     //    neither of the above produced anything (e.g. minimal setup with no response arrays).
+    /// <summary>
+    /// Per-NPC configuration for one dialogue menu option: whether it appears at all, and an
+    /// optional custom label overriding the default generated text.
+    /// </summary>
+    [System.Serializable]
+    public struct DialogueOptionSettings
+    {
+        [Tooltip("If disabled, this option never appears in the dialogue menu for this NPC.")]
+        public bool Enabled;
+
+        [Tooltip("Custom label for this option. Leave empty to use the default generated label.")]
+        public string CustomLabel;
+    }
+
+    /// <summary>
+    /// v18: A fully custom, NPC-authored dialogue option. Wire OnSelected to any method on any
+    /// component directly in the Inspector — no code required per new option. Unlike Greet/
+    /// Rumors, these have no built-in conditional-interactability logic; they're always
+    /// available whenever Enabled.
+    /// </summary>
+    [System.Serializable]
+    public struct CustomDialogueOption
+    {
+        [Tooltip("If disabled, this option never appears.")]
+        public bool Enabled;
+
+        [Tooltip("Text shown for this option in the dialogue menu.")]
+        public string Label;
+
+        [Tooltip("Invoked when the player selects this option. Wire this to any method on any component.")]
+        public UnityEvent OnSelected;
+    }
+
     public class NPCGossipMemory : MonoBehaviour
     {
         [Tooltip("Display name for this NPC, used for debug logging and identification.")]
@@ -34,6 +68,21 @@ namespace Project.GamePlay
         [Header("Fallback Response Pool")]
         [Tooltip("Shared library of generic Positive/Negative reactions, used once a rumor's own Specific Responses are exhausted. Safe to leave empty — the rumor's own default text/audio will be used instead.")]
         [SerializeField] private GeneralRumorResponseLibrary _responseLibrary;
+
+        [Header("Dialogue Menu Options")]
+        [Tooltip("Controls whether/how the 'Greet' option appears for this NPC in the dialogue menu.")]
+        [SerializeField] private DialogueOptionSettings _greetOption = new DialogueOptionSettings { Enabled = true, CustomLabel = "" };
+
+        [Tooltip("Controls whether/how the 'ask about rumors' option appears for this NPC in the dialogue menu. Still only shows if this NPC actually knows at least one rumor.")]
+        [SerializeField] private DialogueOptionSettings _rumorsOption = new DialogueOptionSettings { Enabled = true, CustomLabel = "" };
+
+        public DialogueOptionSettings GreetOptionSettings => _greetOption;
+        public DialogueOptionSettings RumorsOptionSettings => _rumorsOption;
+
+        [Tooltip("Additional, fully custom options this NPC offers beyond Greet/Ask About Rumors. Each can call any method via its own OnSelected event — add as many as you want.")]
+        [SerializeField] private List<CustomDialogueOption> _customOptions = new List<CustomDialogueOption>();
+
+        public IReadOnlyList<CustomDialogueOption> CustomOptions => _customOptions;
 
         [Header("Voice Settings")]
         [Tooltip("Which gendered voice line this NPC uses when a response provides both. Falls back to whichever clip is actually assigned if the selected gender's is empty.")]
@@ -104,6 +153,17 @@ namespace Project.GamePlay
             }
         }
 
+        /// <summary>
+        /// Looks through this NPC's known rumors for one matching the given TriggerMode.
+        /// In practice, this is now only meaningfully called with AutoProximity (from
+        /// NPCProximityGossip.OnTriggerEnter) — AutoProximity rumors that have already been
+        /// presented once are skipped, so they don't re-fire every time the player re-enters
+        /// the trigger zone. ManualTalk rumors no longer auto-surface through this method at
+        /// all (see NPCProximityGossip's dialogue menu integration); they're only reachable via
+        /// TryTellNextRumor(), which ignores TriggerMode entirely. The parameter/signature is
+        /// kept generic in case a future system wants ManualTalk-specific auto-surfacing again.
+        /// Returns null if none are eligible.
+        /// </summary>
         public RuntimeRumorState GetNextRumorToShare(RumorTriggerMode mode)
         {
             return KnownRumors.FirstOrDefault(state =>

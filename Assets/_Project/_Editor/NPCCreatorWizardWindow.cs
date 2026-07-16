@@ -64,6 +64,17 @@ namespace Project.CustomEditor
         [Tooltip("Shared library of generic Positive/Negative reactions, used by full NPCs as their rumor fallback and by Non-Dialogue NPCs as their only response source.")]
         private Project.Data.GeneralRumorResponseLibrary _responseLibrary;
 
+        // v18: Added for the scroll view wrapping OnGUI's content.
+        private Vector2 _scrollPosition;
+
+        // v19: 3D pressable button rendering — see DrawGenerateButton().
+        private bool _generateButtonPressed;
+        private Texture2D _btnNormalTex;
+        private Texture2D _btnHoverTex;
+        private Texture2D _btnActiveTex;
+        private Texture2D _btnDisabledTex;
+        private GUIStyle _generateButtonLabelStyle;
+
         [MenuItem("Tools/NPC Creator/Launch Wizard Window")]
         public static void ShowWindow()
         {
@@ -82,6 +93,8 @@ namespace Project.CustomEditor
 
         private void OnGUI()
         {
+            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
+
             GUILayout.Label("NPC Creator Pipeline Wizard", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("Automated multi-layer UI creation pipeline for Asset Store deployment.", EditorStyles.miniLabel);
             EditorGUILayout.Space();
@@ -224,17 +237,113 @@ namespace Project.CustomEditor
                 EditorGUILayout.HelpBox("Assign a 3D Mesh Asset / Prefab above before generating.", MessageType.Warning);
             }
 
-            GUI.enabled = canGenerate;
-            GUI.backgroundColor = canGenerate ? Color.green : Color.gray;
-            if (GUILayout.Button($"GENERATE COMPLETE {_selectedVariant.ToString().ToUpper()}", GUILayout.Height(45)))
-            {
-                ExecuteEntityGeneration();
-            }
-            GUI.backgroundColor = Color.white;
-            GUI.enabled = true;
+            // v19: Custom 3D pressable button — drop-shadow at rest, gradient background,
+            // hover highlight, and visibly shifts down while held (shadow disappears),
+            // instead of the flat default IMGUI button.
+            DrawGenerateButton($"GENERATE COMPLETE {_selectedVariant.ToString().ToUpper()}", canGenerate);
+
+            EditorGUILayout.EndScrollView();
         }
 
-        // --- Output Folder Helpers ---
+        // --- 3D Pressable Button Rendering ---
+
+        private void EnsureButtonAssets()
+        {
+            if (_btnNormalTex != null) return;
+
+            _btnNormalTex = MakeGradientTexture(new Color(0.35f, 0.72f, 0.35f, 1f), new Color(0.22f, 0.52f, 0.22f, 1f));
+            _btnHoverTex = MakeGradientTexture(new Color(0.42f, 0.80f, 0.42f, 1f), new Color(0.28f, 0.60f, 0.28f, 1f));
+            _btnActiveTex = MakeGradientTexture(new Color(0.20f, 0.45f, 0.20f, 1f), new Color(0.16f, 0.36f, 0.16f, 1f));
+            _btnDisabledTex = MakeGradientTexture(new Color(0.45f, 0.45f, 0.45f, 1f), new Color(0.32f, 0.32f, 0.32f, 1f));
+
+            _generateButtonLabelStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 13,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = Color.white }
+            };
+        }
+
+        private static Texture2D MakeGradientTexture(Color top, Color bottom)
+        {
+            const int height = 16;
+            Texture2D tex = new Texture2D(1, height)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            for (int y = 0; y < height; y++)
+            {
+                float t = y / (float)(height - 1);
+                tex.SetPixel(0, y, Color.Lerp(bottom, top, t));
+            }
+            tex.Apply();
+
+            return tex;
+        }
+
+        /// <summary>
+        /// Draws a button with a drop-shadow (raised look at rest), gradient fill, hover
+        /// highlight, and a visible downward shift + shadow removal while the mouse is held on
+        /// it — a real "3D pressable" feel rather than a flat default IMGUI button.
+        /// </summary>
+        private void DrawGenerateButton(string label, bool enabled)
+        {
+            EnsureButtonAssets();
+
+            Rect baseRect = GUILayoutUtility.GetRect(GUIContent.none, GUIStyle.none, GUILayout.Height(45), GUILayout.ExpandWidth(true));
+            Event evt = Event.current;
+            bool isMouseOver = baseRect.Contains(evt.mousePosition);
+
+            if (!enabled)
+            {
+                _generateButtonPressed = false;
+            }
+            else
+            {
+                if (evt.type == EventType.MouseDown && evt.button == 0 && isMouseOver)
+                {
+                    _generateButtonPressed = true;
+                    evt.Use();
+                }
+                else if (evt.type == EventType.MouseUp && evt.button == 0)
+                {
+                    if (_generateButtonPressed && isMouseOver)
+                    {
+                        ExecuteEntityGeneration();
+                    }
+                    _generateButtonPressed = false;
+                    evt.Use();
+                }
+            }
+
+            bool isPressed = enabled && _generateButtonPressed;
+
+            // Drop-shadow: visible at rest (gives the raised/3D look), gone while pressed
+            // (reinforces the "sunk in" feel alongside the position shift below).
+            if (!isPressed)
+            {
+                Rect shadowRect = baseRect;
+                shadowRect.y += 3f;
+                EditorGUI.DrawRect(shadowRect, new Color(0f, 0f, 0f, 0.35f));
+            }
+
+            Rect drawRect = baseRect;
+            if (isPressed)
+            {
+                drawRect.y += 2f; // The actual "moves down when pressed" effect.
+            }
+
+            Texture2D texToUse = !enabled ? _btnDisabledTex : isPressed ? _btnActiveTex : isMouseOver ? _btnHoverTex : _btnNormalTex;
+            GUI.DrawTexture(drawRect, texToUse, ScaleMode.StretchToFill);
+            GUI.Label(drawRect, label, _generateButtonLabelStyle);
+
+            if (isMouseOver || isPressed)
+            {
+                Repaint(); // Keep hover/press visuals responsive to mouse movement.
+            }
+        }
 
         /// <summary>
         /// Converts an absolute OS path (from OpenFolderPanel) into a project-relative
