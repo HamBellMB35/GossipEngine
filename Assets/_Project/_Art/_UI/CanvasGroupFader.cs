@@ -1,4 +1,3 @@
-
 using System.Collections;
 using UnityEngine;
 
@@ -10,6 +9,13 @@ namespace Project.UI
     /// interactable/blocksRaycasts appropriately so faded-out UI doesn't block raycasts or
     /// intercept input while invisible.
     /// </summary>
+    // v2: BUG FIX — _canvasGroup was only ever assigned in this component's own Awake(). If
+    // another component on the same GameObject (e.g. DialogueMenuUI) called Show()/Hide()/
+    // SetInstant() from ITS OWN Awake(), Unity does not guarantee this component's Awake() has
+    // already run — cross-component Awake() ordering is not guaranteed even on the same
+    // GameObject. Fixed by resolving CanvasGroup lazily via a property on first use, which
+    // works correctly regardless of Awake() call order (GetComponent works immediately, before
+    // any Awake() has run, since it's just a lookup on the GameObject's existing components).
     [RequireComponent(typeof(CanvasGroup))]
     public class CanvasGroupFader : MonoBehaviour
     {
@@ -23,9 +29,21 @@ namespace Project.UI
         private CanvasGroup _canvasGroup;
         private Coroutine _activeFade;
 
+        /// <summary>Lazily resolves the CanvasGroup on first access, regardless of whether Awake() has run yet.</summary>
+        private CanvasGroup Group
+        {
+            get
+            {
+                if (_canvasGroup == null)
+                {
+                    _canvasGroup = GetComponent<CanvasGroup>();
+                }
+                return _canvasGroup;
+            }
+        }
+
         private void Awake()
         {
-            _canvasGroup = GetComponent<CanvasGroup>();
             SetInstant(false);
         }
 
@@ -34,8 +52,8 @@ namespace Project.UI
         {
             if (_activeFade != null) StopCoroutine(_activeFade);
 
-            _canvasGroup.interactable = true;
-            _canvasGroup.blocksRaycasts = true;
+            Group.interactable = true;
+            Group.blocksRaycasts = true;
             _activeFade = StartCoroutine(FadeTo(1f, _fadeInDuration));
         }
 
@@ -55,37 +73,37 @@ namespace Project.UI
                 _activeFade = null;
             }
 
-            _canvasGroup.alpha = visible ? 1f : 0f;
-            _canvasGroup.interactable = visible;
-            _canvasGroup.blocksRaycasts = visible;
+            Group.alpha = visible ? 1f : 0f;
+            Group.interactable = visible;
+            Group.blocksRaycasts = visible;
         }
 
         private IEnumerator FadeTo(float target, float duration)
         {
             if (duration <= 0f)
             {
-                _canvasGroup.alpha = target;
+                Group.alpha = target;
                 yield break;
             }
 
-            float start = _canvasGroup.alpha;
+            float start = Group.alpha;
             float elapsed = 0f;
 
             while (elapsed < duration)
             {
                 elapsed += Time.deltaTime;
-                _canvasGroup.alpha = Mathf.Lerp(start, target, elapsed / duration);
+                Group.alpha = Mathf.Lerp(start, target, elapsed / duration);
                 yield return null;
             }
 
-            _canvasGroup.alpha = target;
+            Group.alpha = target;
         }
 
         private IEnumerator FadeOutRoutine()
         {
             yield return FadeTo(0f, _fadeOutDuration);
-            _canvasGroup.interactable = false;
-            _canvasGroup.blocksRaycasts = false;
+            Group.interactable = false;
+            Group.blocksRaycasts = false;
         }
     }
 }
