@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dfae303955f0b9245b888af44b530e83, type: 3}
   m_Name: DefaultResponseLibrary
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.GeneralRumorResponseLibrary
+  ShowTextBubble: 0
   PositiveResponses:
   - ResponseText: Default positive Library Reponse  1
     MaleVoiceLine: {fileID: 8300000, guid: 996a8a2ce79dd334291402c8051dc5f4, type: 3}

@@ -71,7 +71,19 @@ namespace Project.CustomEditor
         private Vector3 _speechBubbleOffset = new Vector3(0f, 80f, 0f);
 
         [Tooltip("Local position offset (within the NPC's worldspace UI canvas) where the nameplate appears.")]
-        private Vector3 _nameplateOffset = new Vector3(0f, 120f, 0f);
+        private Vector3 _nameplateOffset = new Vector3(0f, 15f, 0f);
+
+        [Header("[E] Prompt Visual Style")]
+        private float _promptCornerRadius = 10f;
+        private float _promptBorderThickness = 2f;
+        private Color _promptBorderColor = new Color(0.80f, 0.66f, 0.32f, 1f);
+        private Color _promptFillTop = new Color(0.16f, 0.16f, 0.16f, 0.9f);
+        private Color _promptFillBottom = new Color(0.06f, 0.06f, 0.06f, 0.9f);
+
+        // v24: Shared with DialogueMenuUIWizard's output location — generated UI assets from
+        // either wizard live in the same place, separate from _outputFolderPath (which is
+        // specifically for NPC profile .asset files).
+        private const string UiOutputFolder = "Assets/NPC Creator/Generated UI";
 
         // v19: 3D pressable button rendering — see DrawGenerateButton().
         private bool _generateButtonPressed;
@@ -194,7 +206,6 @@ namespace Project.CustomEditor
             _canvasDimensions = EditorGUILayout.Vector2Field("Master Canvas Dimensions", _canvasDimensions);
 
             EditorGUILayout.Space();
-            _promptBgColor = EditorGUILayout.ColorField("Interaction Prompt BG Color", _promptBgColor);
             _speechBgColor = EditorGUILayout.ColorField("Dialogue Speech Bubble BG Color", _speechBgColor);
             _shopBgColor = EditorGUILayout.ColorField("Merchant Menu Background Color", _shopBgColor);
 
@@ -202,6 +213,18 @@ namespace Project.CustomEditor
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
+
+            // v24: [E] prompt visual style — rounded corners, border, gradient, matching the
+            // dialogue menu's look. Superseded the old flat "Interaction Prompt BG Color" field.
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("[E] Prompt Visual Style", EditorStyles.boldLabel);
+            _promptCornerRadius = EditorGUILayout.Slider("Corner Radius", _promptCornerRadius, 0f, 24f);
+            _promptBorderThickness = EditorGUILayout.Slider("Border Thickness", _promptBorderThickness, 0f, 8f);
+            _promptBorderColor = EditorGUILayout.ColorField("Border Color", _promptBorderColor);
+            _promptFillTop = EditorGUILayout.ColorField("Fill (Top)", _promptFillTop);
+            _promptFillBottom = EditorGUILayout.ColorField("Fill (Bottom)", _promptFillBottom);
+            EditorGUILayout.HelpBox("Shared across every generated NPC — regenerating any NPC after changing these values updates the look for all of them, since they reference the same generated sprite asset.", MessageType.None);
+            EditorGUILayout.EndVertical();
 
             // Debug/visualization add-on toggle.
             EditorGUILayout.BeginVertical("box");
@@ -672,7 +695,12 @@ namespace Project.CustomEditor
             CanvasGroupFader promptFader = promptBackground.AddComponent<CanvasGroupFader>();
 
             Image promptBgImage = promptBackground.AddComponent<Image>();
-            promptBgImage.color = _promptBgColor;
+            EnsureFolderExists(UiOutputFolder);
+            Sprite promptSprite = ProceduralUISprites.CreateRoundedRectSprite(
+                $"{UiOutputFolder}/PromptBackground.png", 64, _promptCornerRadius, _promptBorderThickness, _promptBorderColor, _promptFillTop, _promptFillBottom);
+            promptBgImage.sprite = promptSprite;
+            promptBgImage.type = Image.Type.Sliced;
+            promptBgImage.color = Color.white; // Tint stays neutral — gradient/border is baked into the sprite.
 
             RectTransform promptBgRect = promptBackground.GetComponent<RectTransform>();
             promptBgRect.anchorMin = new Vector2(0f, 0f);

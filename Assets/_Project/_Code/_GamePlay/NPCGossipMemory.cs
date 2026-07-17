@@ -20,8 +20,10 @@ namespace Project.GamePlay
     // 3. The rumor's own RumorDisplayText/VoiceLineAudio, as an always-available fallback if
     //    neither of the above produced anything (e.g. minimal setup with no response arrays).
     /// <summary>
-    /// Per-NPC configuration for one dialogue menu option: whether it appears at all, and an
-    /// optional custom label overriding the default generated text.
+    /// Per-NPC configuration for one dialogue menu option: whether it appears at all, an
+    /// optional custom label overriding the default (supports a {NpcName} token, substituted
+    /// with this NPC's actual name at display time), and optional gendered audio played when
+    /// selected.
     /// </summary>
     [System.Serializable]
     public struct DialogueOptionSettings
@@ -29,12 +31,26 @@ namespace Project.GamePlay
         [Tooltip("If disabled, this option never appears in the dialogue menu for this NPC.")]
         public bool Enabled;
 
-        [Tooltip("Custom label for this option. Leave empty to use the default generated label.")]
+        [Tooltip("Label shown for this option. Supports a {NpcName} token, replaced with this NPC's actual name.")]
         public string CustomLabel;
+
+        [Tooltip("Optional. Played when the reacting NPC's Voice Gender is set to Male.")]
+        public AudioClip MaleAudio;
+
+        [Tooltip("Optional. Played when the reacting NPC's Voice Gender is set to Female.")]
+        public AudioClip FemaleAudio;
+
+        /// <summary>Returns the clip matching the requested gender, falling back to the other gender's clip if only one is assigned.</summary>
+        public AudioClip GetVoiceLine(VoiceGender gender)
+        {
+            AudioClip preferred = gender == VoiceGender.Male ? MaleAudio : FemaleAudio;
+            if (preferred != null) return preferred;
+            return gender == VoiceGender.Male ? FemaleAudio : MaleAudio;
+        }
     }
 
     /// <summary>
-    /// v18: A fully custom, NPC-authored dialogue option. Wire OnSelected to any method on any
+    /// A fully custom, NPC-authored dialogue option. Wire OnSelected to any method on any
     /// component directly in the Inspector — no code required per new option. Unlike Greet/
     /// Rumors, these have no built-in conditional-interactability logic; they're always
     /// available whenever Enabled.
@@ -48,8 +64,22 @@ namespace Project.GamePlay
         [Tooltip("Text shown for this option in the dialogue menu.")]
         public string Label;
 
+        [Tooltip("Optional. Played when the reacting NPC's Voice Gender is set to Male.")]
+        public AudioClip MaleAudio;
+
+        [Tooltip("Optional. Played when the reacting NPC's Voice Gender is set to Female.")]
+        public AudioClip FemaleAudio;
+
         [Tooltip("Invoked when the player selects this option. Wire this to any method on any component.")]
         public UnityEvent OnSelected;
+
+        /// <summary>Returns the clip matching the requested gender, falling back to the other gender's clip if only one is assigned.</summary>
+        public AudioClip GetVoiceLine(VoiceGender gender)
+        {
+            AudioClip preferred = gender == VoiceGender.Male ? MaleAudio : FemaleAudio;
+            if (preferred != null) return preferred;
+            return gender == VoiceGender.Male ? FemaleAudio : MaleAudio;
+        }
     }
 
     public class NPCGossipMemory : MonoBehaviour
@@ -71,10 +101,10 @@ namespace Project.GamePlay
 
         [Header("Dialogue Menu Options")]
         [Tooltip("Controls whether/how the 'Greet' option appears for this NPC in the dialogue menu.")]
-        [SerializeField] private DialogueOptionSettings _greetOption = new DialogueOptionSettings { Enabled = true, CustomLabel = "" };
+        [SerializeField] private DialogueOptionSettings _greetOption = new DialogueOptionSettings { Enabled = true, CustomLabel = "Greet {NpcName}" };
 
         [Tooltip("Controls whether/how the 'ask about rumors' option appears for this NPC in the dialogue menu. Still only shows if this NPC actually knows at least one rumor.")]
-        [SerializeField] private DialogueOptionSettings _rumorsOption = new DialogueOptionSettings { Enabled = true, CustomLabel = "" };
+        [SerializeField] private DialogueOptionSettings _rumorsOption = new DialogueOptionSettings { Enabled = true, CustomLabel = "What do you hear on the streets?" };
 
         public DialogueOptionSettings GreetOptionSettings => _greetOption;
         public DialogueOptionSettings RumorsOptionSettings => _rumorsOption;
@@ -83,6 +113,27 @@ namespace Project.GamePlay
         [SerializeField] private List<CustomDialogueOption> _customOptions = new List<CustomDialogueOption>();
 
         public IReadOnlyList<CustomDialogueOption> CustomOptions => _customOptions;
+
+        /// <summary>
+        /// v24: Plays a gendered clip (matching this NPC's own Voice Gender, with cross-gender
+        /// fallback) through this NPC's own AudioSource. Used by the dialogue menu when the
+        /// player selects Greet, "What do you hear", or a custom option — each of which can
+        /// carry its own optional Male/Female audio, separate from any rumor's own audio.
+        /// </summary>
+        public void PlayOptionAudio(AudioClip maleClip, AudioClip femaleClip)
+        {
+            AudioClip clip = _voiceGender == VoiceGender.Male ? maleClip : femaleClip;
+            if (clip == null)
+            {
+                clip = _voiceGender == VoiceGender.Male ? femaleClip : maleClip;
+            }
+
+            if (clip != null && _audioSource != null)
+            {
+                _audioSource.clip = clip;
+                _audioSource.Play();
+            }
+        }
 
         [Header("Portrait (shown in the rumor popup)")]
         [Tooltip("Optional static portrait of this NPC.")]

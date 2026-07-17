@@ -13,13 +13,12 @@ namespace Project.CustomEditor
     /// already exist), the General bar, the Faction bar prefab, and the container that
     /// dynamically-created faction bars get parented under — then wires ReputationBarUI's
     /// fields automatically.
-    ///
-    /// v2: Converted from a single-click MenuItem into a configurable window (Row Width/Height
-    /// editable before generation, defaulting to 215x20). Each generated bar's RectTransform
-    /// remains freely resizable afterward in the Inspector — this also fixes a bug where both
-    /// layout groups had childControlWidth enabled, which silently force-stretched every row
-    /// to fill its parent regardless of whatever size was configured.
     /// </summary>
+    // v8: Bar backgrounds now generated through ProceduralUISprites (rounded corners, border,
+    // vertical gradient) instead of the flat built-in UISprite — matching the visual language
+    // of the Dialogue Menu / [E] prompt work. Both the General row and the Faction row prefab
+    // share the SAME generated sprite asset (one CreateRoundedRectSprite call, reused for
+    // both), guaranteeing they're visually identical by construction rather than just similar.
     public class ReputationUIWizard : EditorWindow
     {
         private const string OutputFolder = "Assets/NPC Creator/Generated UI";
@@ -27,11 +26,18 @@ namespace Project.CustomEditor
         private float _rowWidth = 215f;
         private float _rowHeight = 20f;
 
+        [Header("Visual Style")]
+        private float _cornerRadius = 8f;
+        private float _borderThickness = 2f;
+        private Color _borderColor = new Color(0.80f, 0.66f, 0.32f, 1f);
+        private Color _fillTop = new Color(0.22f, 0.55f, 0.85f, 1f);
+        private Color _fillBottom = new Color(0.12f, 0.32f, 0.55f, 1f);
+
         [MenuItem("Tools/NPC Creator/Generate Reputation Bar UI")]
         public static void ShowWindow()
         {
             ReputationUIWizard window = GetWindow<ReputationUIWizard>("Reputation UI Wizard");
-            window.minSize = new Vector2(360, 240);
+            window.minSize = new Vector2(360, 340);
             window.Show();
         }
 
@@ -46,6 +52,18 @@ namespace Project.CustomEditor
             _rowWidth = EditorGUILayout.FloatField("Row Width", _rowWidth);
             _rowHeight = EditorGUILayout.FloatField("Row Height", _rowHeight);
             EditorGUILayout.HelpBox("Applies to both the General bar and the Faction bar prefab (label and value fill the row automatically, so they scale with it). Each generated bar's RectTransform stays freely resizable afterward in the Inspector.", MessageType.None);
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space();
+
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("Visual Style", EditorStyles.boldLabel);
+            _cornerRadius = EditorGUILayout.Slider("Corner Radius", _cornerRadius, 0f, 16f);
+            _borderThickness = EditorGUILayout.Slider("Border Thickness", _borderThickness, 0f, 6f);
+            _borderColor = EditorGUILayout.ColorField("Border Color", _borderColor);
+            _fillTop = EditorGUILayout.ColorField("Fill (Top)", _fillTop);
+            _fillBottom = EditorGUILayout.ColorField("Fill (Bottom)", _fillBottom);
+            EditorGUILayout.HelpBox("General and Faction bars share the same generated sprite — they're guaranteed to look identical.", MessageType.None);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
@@ -65,11 +83,15 @@ namespace Project.CustomEditor
 
             Canvas targetCanvas = FindOrCreateCanvas();
 
+            // v8: One shared sprite, used for both bars below — the actual mechanism that
+            // guarantees General and Faction bars are visually identical, not just similarly coded.
+            Sprite barSprite = ProceduralUISprites.CreateRoundedRectSprite(
+                $"{OutputFolder}/ReputationBarBackground.png", 64, _cornerRadius, _borderThickness, _borderColor, _fillTop, _fillBottom);
+
             GameObject rootObj = new GameObject("ReputationBarUI", typeof(RectTransform));
             rootObj.transform.SetParent(targetCanvas.transform, false);
 
             RectTransform rootRect = rootObj.GetComponent<RectTransform>();
-            // v4: Anchored to the TOP-RIGHT corner instead of top-left.
             rootRect.anchorMin = new Vector2(1f, 1f);
             rootRect.anchorMax = new Vector2(1f, 1f);
             rootRect.pivot = new Vector2(1f, 1f);
@@ -79,28 +101,24 @@ namespace Project.CustomEditor
             VerticalLayoutGroup rootLayout = rootObj.AddComponent<VerticalLayoutGroup>();
             rootLayout.spacing = 6f;
             rootLayout.childControlHeight = false;
-            // v2: FIX — was true, which silently force-stretched every row's width to match
-            // the container regardless of the row's own RectTransform size, making the
-            // configured/edited size have no visible effect.
             rootLayout.childControlWidth = false;
             rootLayout.childForceExpandHeight = false;
             rootLayout.childForceExpandWidth = false;
 
             ReputationBarUI barUI = rootObj.AddComponent<ReputationBarUI>();
 
-            ReputationBarRow generalRow = CreateBarRow(rootObj.transform, "GeneralReputationBar", "General");
+            ReputationBarRow generalRow = CreateBarRow(rootObj.transform, "GeneralReputationBar", "General", barSprite);
 
             GameObject containerObj = new GameObject("FactionRowContainer", typeof(RectTransform));
             containerObj.transform.SetParent(rootObj.transform, false);
             VerticalLayoutGroup containerLayout = containerObj.AddComponent<VerticalLayoutGroup>();
             containerLayout.spacing = 4f;
             containerLayout.childControlHeight = false;
-            // v2: Same fix as above.
             containerLayout.childControlWidth = false;
             containerLayout.childForceExpandHeight = false;
             containerLayout.childForceExpandWidth = false;
 
-            ReputationBarRow factionTemplate = CreateBarRow(null, "FactionReputationBarRow", "Faction");
+            ReputationBarRow factionTemplate = CreateBarRow(null, "FactionReputationBarRow", "Faction", barSprite);
             string prefabPath = $"{OutputFolder}/FactionReputationBarRow.prefab";
             GameObject savedPrefab = PrefabUtility.SaveAsPrefabAsset(factionTemplate.gameObject, prefabPath);
             Object.DestroyImmediate(factionTemplate.gameObject);
@@ -120,7 +138,7 @@ namespace Project.CustomEditor
                 "Great");
         }
 
-        private ReputationBarRow CreateBarRow(Transform parent, string objectName, string defaultLabel)
+        private ReputationBarRow CreateBarRow(Transform parent, string objectName, string defaultLabel, Sprite barSprite)
         {
             GameObject rowObj = new GameObject(objectName, typeof(RectTransform));
             if (parent != null)
@@ -128,18 +146,15 @@ namespace Project.CustomEditor
                 rowObj.transform.SetParent(parent, false);
             }
 
-            // v2: Uses the configured Row Width/Height instead of a hardcoded value. This
-            // RectTransform remains a normal, freely editable field afterward — nothing locks
-            // it once generated.
             RectTransform rowRect = rowObj.GetComponent<RectTransform>();
             rowRect.sizeDelta = new Vector2(_rowWidth, _rowHeight);
 
             Image fillImage = rowObj.AddComponent<Image>();
-            fillImage.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            fillImage.sprite = barSprite;
             fillImage.type = Image.Type.Filled;
             fillImage.fillMethod = Image.FillMethod.Horizontal;
             fillImage.fillOrigin = (int)Image.OriginHorizontal.Left;
-            fillImage.color = new Color(0.2f, 0.6f, 1f, 1f);
+            fillImage.color = Color.white; // Gradient/border baked into the sprite — tint stays neutral.
 
             GameObject labelObj = new GameObject("Label", typeof(RectTransform));
             labelObj.transform.SetParent(rowObj.transform, false);
@@ -150,8 +165,6 @@ namespace Project.CustomEditor
             RectTransform labelRect = labelObj.GetComponent<RectTransform>();
             labelRect.anchorMin = new Vector2(0f, 0f);
             labelRect.anchorMax = new Vector2(0.5f, 1f);
-            // v6: Left = -130, Right = 100 as requested. In the Inspector, "Left" maps to
-            // offsetMin.x and "Right" maps to -offsetMax.x.
             labelRect.offsetMin = new Vector2(-130f, 0f);
             labelRect.offsetMax = new Vector2(-100f, 0f);
 
@@ -180,10 +193,6 @@ namespace Project.CustomEditor
 
         private static Canvas FindOrCreateCanvas()
         {
-            // v5: REAL FIX — render mode alone isn't enough to identify "the" HUD canvas,
-            // because every NPC's Vendor shop canvas (NPC_Merchant_Market_Canvas) is ALSO a
-            // Screen Space - Overlay canvas. Now explicitly skips any canvas that belongs to
-            // an NPC's own hierarchy, regardless of render mode or naming.
             Canvas[] allCanvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include);
             foreach (Canvas candidate in allCanvases)
             {
@@ -202,12 +211,6 @@ namespace Project.CustomEditor
             return canvas;
         }
 
-        /// <summary>
-        /// Walks up from the given transform looking for NPCGossipMemory or
-        /// NPCProximityGossip anywhere in the parent chain — either one indicates this
-        /// transform is part of an NPC's own hierarchy (e.g. its Vendor shop canvas), not a
-        /// standalone HUD canvas.
-        /// </summary>
         private static bool IsPartOfNpcHierarchy(Transform start)
         {
             Transform current = start;

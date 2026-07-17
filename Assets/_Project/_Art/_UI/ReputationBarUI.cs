@@ -15,6 +15,15 @@ namespace Project.UI
     /// the scene yet), and a Faction Row Container (an empty RectTransform / layout group
     /// that new faction rows get parented under).
     /// </summary>
+    // v2: BUG FIX — subscription/initial sync previously happened in Start(), which raced
+    // against GameLifetimeScope's GameBootstrapper manually injecting this component (via
+    // IObjectResolver.Inject()). Unity does not guarantee a regular MonoBehaviour's Start()
+    // runs after a VContainer entry point's Start() — if ReputationBarUI.Start() ran FIRST,
+    // _reputation was still null, the whole setup silently bailed out via the early-return
+    // warning, and the bar was permanently stuck showing its generation-time default fill
+    // (100%, since nothing ever explicitly set it), never updating again. Fixed by moving the
+    // subscription/sync into Construct() itself, which fires at the exact, guaranteed moment
+    // injection actually happens — no ordering assumption required.
     public class ReputationBarUI : MonoBehaviour
     {
         [Header("General Reputation")]
@@ -31,6 +40,16 @@ namespace Project.UI
         public void Construct(ReputationService reputation)
         {
             _reputation = reputation;
+
+            _reputation.OnGeneralReputationChanged += HandleGeneralReputationChanged;
+            _reputation.OnFactionReputationChanged += HandleFactionReputationChanged;
+
+            // Sync immediately in case reputation already changed before this UI was injected.
+            HandleGeneralReputationChanged(_reputation.GetGeneralReputation());
+            foreach (KeyValuePair<string, float> pair in _reputation.GetAllFactionReputations())
+            {
+                HandleFactionReputationChanged(pair.Key, pair.Value);
+            }
         }
 
         private void Start()
@@ -38,17 +57,6 @@ namespace Project.UI
             if (_reputation == null)
             {
                 Debug.LogWarning("<color=orange>[ReputationBarUI]</color> ReputationService was not injected — is this GameObject registered in GameLifetimeScope?", this);
-                return;
-            }
-
-            _reputation.OnGeneralReputationChanged += HandleGeneralReputationChanged;
-            _reputation.OnFactionReputationChanged += HandleFactionReputationChanged;
-
-            // Sync immediately in case reputation already changed before this UI existed.
-            HandleGeneralReputationChanged(_reputation.GetGeneralReputation());
-            foreach (KeyValuePair<string, float> pair in _reputation.GetAllFactionReputations())
-            {
-                HandleFactionReputationChanged(pair.Key, pair.Value);
             }
         }
 

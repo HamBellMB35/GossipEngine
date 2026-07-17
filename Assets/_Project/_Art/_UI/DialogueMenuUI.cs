@@ -353,17 +353,13 @@ namespace Project.UI
             DialogueOptionSettings greetSettings = _currentGossipMemory.GreetOptionSettings;
             if (greetSettings.Enabled)
             {
-                // v12: Greet is now ALWAYS present and interactable — no more disabled state
-                // or "(wait Xs)" text. Cooldown is communicated purely through text color, and
-                // clicking during cooldown just silently does nothing (TryApplyGreetBoost
-                // already no-ops in that case).
                 bool canGreet = _currentReputationOpinion == null || _currentReputationOpinion.CanGreet();
 
-                string baseLabel = string.IsNullOrEmpty(greetSettings.CustomLabel)
-                    ? $"Greet {_currentNpcName}"
-                    : greetSettings.CustomLabel;
+                // v24: CustomLabel is never blank now (populated with real default text at
+                // field-definition time) — just substitute the {NpcName} token instead of the
+                // old "is it empty" branch.
+                string baseLabel = greetSettings.CustomLabel.Replace("{NpcName}", _currentNpcName);
 
-                // v13: Countdown text restored alongside the darkened color (not a replacement).
                 string greetLabel = canGreet
                     ? baseLabel
                     : $"{baseLabel} (wait {Mathf.CeilToInt(_currentReputationOpinion.GetGreetCooldownRemaining())}s)";
@@ -380,9 +376,7 @@ namespace Project.UI
             DialogueOptionSettings rumorsSettings = _currentGossipMemory.RumorsOptionSettings;
             if (rumorsSettings.Enabled && _currentGossipMemory.KnownRumors.Count > 0)
             {
-                string label = string.IsNullOrEmpty(rumorsSettings.CustomLabel)
-                    ? "What do you hear on the streets?"
-                    : rumorsSettings.CustomLabel;
+                string label = rumorsSettings.CustomLabel.Replace("{NpcName}", _currentNpcName);
 
                 _currentOptions.Add(new DialogueOptionData
                 {
@@ -398,12 +392,14 @@ namespace Project.UI
                 if (!customOption.Enabled) continue;
 
                 UnityEngine.Events.UnityEvent onSelected = customOption.OnSelected;
-                string customLabel = string.IsNullOrEmpty(customOption.Label) ? "..." : customOption.Label;
+                AudioClip maleAudio = customOption.MaleAudio;
+                AudioClip femaleAudio = customOption.FemaleAudio;
+                string customLabel = string.IsNullOrEmpty(customOption.Label) ? "New Option" : customOption.Label;
 
                 _currentOptions.Add(new DialogueOptionData
                 {
                     Label = customLabel,
-                    OnSelect = () => OnSelectCustomOption(onSelected),
+                    OnSelect = () => OnSelectCustomOption(onSelected, maleAudio, femaleAudio),
                     Interactable = true,
                     UseDarkenedColor = false
                 });
@@ -459,12 +455,21 @@ namespace Project.UI
         {
             PlayClickSound();
             _currentReputationOpinion?.TryApplyGreetBoost(_greetBoostAmount);
+
+            // v24: Optional gendered audio for this option, separate from any rumor's audio.
+            DialogueOptionSettings greetSettings = _currentGossipMemory != null ? _currentGossipMemory.GreetOptionSettings : default;
+            _currentGossipMemory?.PlayOptionAudio(greetSettings.MaleAudio, greetSettings.FemaleAudio);
+
             RefreshAfterAction();
         }
 
         private void OnSelectOpenRumorList()
         {
             PlayClickSound();
+
+            DialogueOptionSettings rumorsSettings = _currentGossipMemory != null ? _currentGossipMemory.RumorsOptionSettings : default;
+            _currentGossipMemory?.PlayOptionAudio(rumorsSettings.MaleAudio, rumorsSettings.FemaleAudio);
+
             _currentView = MenuView.RumorList;
             RefreshAfterAction();
         }
@@ -484,9 +489,10 @@ namespace Project.UI
             RefreshAfterAction(); // Updates that entry's color to darkened now that it's been heard.
         }
 
-        private void OnSelectCustomOption(UnityEngine.Events.UnityEvent onSelected)
+        private void OnSelectCustomOption(UnityEngine.Events.UnityEvent onSelected, AudioClip maleAudio, AudioClip femaleAudio)
         {
             PlayClickSound();
+            _currentGossipMemory?.PlayOptionAudio(maleAudio, femaleAudio);
             onSelected?.Invoke();
             RefreshAfterAction();
         }

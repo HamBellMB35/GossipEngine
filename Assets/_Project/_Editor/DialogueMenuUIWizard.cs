@@ -18,6 +18,15 @@ namespace Project.CustomEditor
     {
         private const string OutputFolder = "Assets/NPC Creator/Generated UI";
 
+        [Header("Visual Style")]
+        private float _cornerRadius = 14f;
+        private float _borderThickness = 3f;
+        private Color _borderColor = new Color(0.80f, 0.66f, 0.32f, 1f);
+        private Color _panelFillTop = new Color(0.17f, 0.17f, 0.21f, 0.97f);
+        private Color _panelFillBottom = new Color(0.08f, 0.08f, 0.11f, 0.97f);
+        private Color _buttonFillTop = new Color(0.32f, 0.32f, 0.36f, 1f);
+        private Color _buttonFillBottom = new Color(0.19f, 0.19f, 0.23f, 1f);
+
         [MenuItem("Tools/NPC Creator/Generate Dialogue Menu UI")]
         public static void ShowWindow()
         {
@@ -34,6 +43,21 @@ namespace Project.CustomEditor
                 EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space();
 
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("Visual Style", EditorStyles.boldLabel);
+            _cornerRadius = EditorGUILayout.Slider("Corner Radius", _cornerRadius, 0f, 32f);
+            _borderThickness = EditorGUILayout.Slider("Border Thickness", _borderThickness, 0f, 10f);
+            _borderColor = EditorGUILayout.ColorField("Border Color", _borderColor);
+            EditorGUILayout.Space();
+            _panelFillTop = EditorGUILayout.ColorField("Panel Fill (Top)", _panelFillTop);
+            _panelFillBottom = EditorGUILayout.ColorField("Panel Fill (Bottom)", _panelFillBottom);
+            EditorGUILayout.Space();
+            _buttonFillTop = EditorGUILayout.ColorField("Button Fill (Top)", _buttonFillTop);
+            _buttonFillBottom = EditorGUILayout.ColorField("Button Fill (Bottom)", _buttonFillBottom);
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space();
+
             GUI.backgroundColor = Color.green;
             if (GUILayout.Button("GENERATE DIALOGUE MENU UI", GUILayout.Height(40)))
             {
@@ -47,6 +71,14 @@ namespace Project.CustomEditor
             EnsureFolderExists(OutputFolder);
             Canvas canvas = FindOrCreateCanvas();
 
+            // v14: Procedurally generated, saved as real Sprite assets so they stay crisp at
+            // any size (9-sliced). Panel/popup share one style, buttons another, both using
+            // the same corner radius/border for visual consistency.
+            Sprite panelSprite = ProceduralUISprites.CreateRoundedRectSprite(
+                $"{OutputFolder}/PanelBackground.png", 128, _cornerRadius, _borderThickness, _borderColor, _panelFillTop, _panelFillBottom);
+            Sprite buttonSprite = ProceduralUISprites.CreateRoundedRectSprite(
+                $"{OutputFolder}/ButtonBackground.png", 64, _cornerRadius * 0.6f, _borderThickness, _borderColor, _buttonFillTop, _buttonFillBottom);
+
             // --- Panel root ---
             GameObject panelObj = new GameObject("DialogueMenuPanel", typeof(RectTransform));
             panelObj.transform.SetParent(canvas.transform, false);
@@ -59,7 +91,9 @@ namespace Project.CustomEditor
             panelRect.anchoredPosition = Vector2.zero;
 
             Image panelBg = panelObj.AddComponent<Image>();
-            panelBg.color = new Color(0.1f, 0.1f, 0.1f, 0.95f);
+            panelBg.sprite = panelSprite;
+            panelBg.type = Image.Type.Sliced;
+            panelBg.color = Color.white; // Tint stays neutral — the gradient/border is baked into the sprite itself.
 
             panelObj.AddComponent<CanvasGroup>();
             CanvasGroupFader panelFader = panelObj.AddComponent<CanvasGroupFader>();
@@ -142,8 +176,11 @@ namespace Project.CustomEditor
             RectTransform buttonRect = buttonTemplate.GetComponent<RectTransform>();
             buttonRect.sizeDelta = new Vector2(0f, 40f);
             Image buttonBg = buttonTemplate.AddComponent<Image>();
-            buttonBg.color = new Color(0.25f, 0.25f, 0.25f, 1f);
+            buttonBg.sprite = buttonSprite;
+            buttonBg.type = Image.Type.Sliced;
+            buttonBg.color = Color.white;
             buttonTemplate.AddComponent<Button>();
+            buttonTemplate.AddComponent<AnimatedButtonFeedback>();
 
             GameObject buttonLabelObj = new GameObject("Label", typeof(RectTransform));
             buttonLabelObj.transform.SetParent(buttonTemplate.transform, false);
@@ -183,9 +220,12 @@ namespace Project.CustomEditor
             RectTransform carouselButtonRect = carouselButtonObj.GetComponent<RectTransform>();
             carouselButtonRect.sizeDelta = new Vector2(0f, 60f);
             Image carouselButtonBg = carouselButtonObj.AddComponent<Image>();
-            carouselButtonBg.color = new Color(0.25f, 0.25f, 0.25f, 1f);
+            carouselButtonBg.sprite = buttonSprite;
+            carouselButtonBg.type = Image.Type.Sliced;
+            carouselButtonBg.color = Color.white;
             CanvasGroup carouselCanvasGroup = carouselButtonObj.AddComponent<CanvasGroup>();
             Button carouselButton = carouselButtonObj.AddComponent<Button>();
+            carouselButtonObj.AddComponent<AnimatedButtonFeedback>();
             LayoutElement carouselButtonLayoutElement = carouselButtonObj.AddComponent<LayoutElement>();
             carouselButtonLayoutElement.preferredHeight = 60f;
 
@@ -217,8 +257,19 @@ namespace Project.CustomEditor
             GameObject leaveObj = new GameObject("LeaveButton", typeof(RectTransform));
             leaveObj.transform.SetParent(panelObj.transform, false);
             Image leaveBg = leaveObj.AddComponent<Image>();
-            leaveBg.color = new Color(0.4f, 0.15f, 0.15f, 1f);
+            leaveBg.sprite = buttonSprite;
+            leaveBg.type = Image.Type.Sliced;
             Button leaveButton = leaveObj.AddComponent<Button>();
+
+            // v14: AnimatedButtonFeedback overwrites Image.color with its own _normalColor at
+            // Awake() — set the reddish Leave tint THROUGH that field, not directly on the
+            // Image, or it would be silently overwritten at runtime.
+            AnimatedButtonFeedback leaveFeedback = leaveObj.AddComponent<AnimatedButtonFeedback>();
+            SerializedObject serializedLeaveFeedback = new SerializedObject(leaveFeedback);
+            serializedLeaveFeedback.FindProperty("_normalColor").colorValue = new Color(1.3f, 0.75f, 0.75f, 1f);
+            serializedLeaveFeedback.FindProperty("_hoverColor").colorValue = new Color(1.5f, 0.85f, 0.85f, 1f);
+            serializedLeaveFeedback.FindProperty("_pressedColor").colorValue = new Color(1.1f, 0.6f, 0.6f, 1f);
+            serializedLeaveFeedback.ApplyModifiedProperties();
             LayoutElement leaveLayoutElement = leaveObj.AddComponent<LayoutElement>();
             leaveLayoutElement.preferredHeight = 36f;
 
@@ -247,7 +298,9 @@ namespace Project.CustomEditor
             popupRect.anchoredPosition = Vector2.zero;
 
             Image popupBg = popupObj.AddComponent<Image>();
-            popupBg.color = new Color(0.12f, 0.12f, 0.16f, 0.97f);
+            popupBg.sprite = panelSprite;
+            popupBg.type = Image.Type.Sliced;
+            popupBg.color = Color.white;
             popupObj.AddComponent<CanvasGroup>();
             CanvasGroupFader popupFader = popupObj.AddComponent<CanvasGroupFader>();
             VideoPlayer popupVideoPlayer = popupObj.AddComponent<VideoPlayer>();
@@ -292,7 +345,8 @@ namespace Project.CustomEditor
             GameObject popupCloseObj = new GameObject("CloseButton", typeof(RectTransform));
             popupCloseObj.transform.SetParent(popupObj.transform, false);
             Image popupCloseBg = popupCloseObj.AddComponent<Image>();
-            popupCloseBg.color = new Color(0.5f, 0.15f, 0.15f, 1f);
+            popupCloseBg.sprite = buttonSprite;
+            popupCloseBg.type = Image.Type.Sliced;
             Button popupCloseButton = popupCloseObj.AddComponent<Button>();
             RectTransform popupCloseRect = popupCloseObj.GetComponent<RectTransform>();
             popupCloseRect.anchorMin = new Vector2(1f, 1f);
@@ -300,6 +354,13 @@ namespace Project.CustomEditor
             popupCloseRect.pivot = new Vector2(1f, 1f);
             popupCloseRect.sizeDelta = new Vector2(28f, 28f);
             popupCloseRect.anchoredPosition = new Vector2(-6f, -6f);
+
+            AnimatedButtonFeedback popupCloseFeedback = popupCloseObj.AddComponent<AnimatedButtonFeedback>();
+            SerializedObject serializedPopupCloseFeedback = new SerializedObject(popupCloseFeedback);
+            serializedPopupCloseFeedback.FindProperty("_normalColor").colorValue = new Color(1.3f, 0.75f, 0.75f, 1f);
+            serializedPopupCloseFeedback.FindProperty("_hoverColor").colorValue = new Color(1.5f, 0.85f, 0.85f, 1f);
+            serializedPopupCloseFeedback.FindProperty("_pressedColor").colorValue = new Color(1.1f, 0.6f, 0.6f, 1f);
+            serializedPopupCloseFeedback.ApplyModifiedProperties();
 
             GameObject popupCloseLabelObj = new GameObject("Label", typeof(RectTransform));
             popupCloseLabelObj.transform.SetParent(popupCloseObj.transform, false);
