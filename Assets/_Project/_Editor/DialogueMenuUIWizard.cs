@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UI;
+using UnityEngine.Video;
 using TMPro;
 using Project.UI;
 using Project.GamePlay;
@@ -63,6 +64,12 @@ namespace Project.CustomEditor
             panelObj.AddComponent<CanvasGroup>();
             CanvasGroupFader panelFader = panelObj.AddComponent<CanvasGroupFader>();
             DialogueMenuUI menuUI = panelObj.AddComponent<DialogueMenuUI>();
+
+            // v13: Click sound source — 2D (non-spatial), since this is UI feedback, not a
+            // world-positioned sound.
+            AudioSource clickAudioSource = panelObj.AddComponent<AudioSource>();
+            clickAudioSource.playOnAwake = false;
+            clickAudioSource.spatialBlend = 0f;
 
             VerticalLayoutGroup panelLayout = panelObj.AddComponent<VerticalLayoutGroup>();
             panelLayout.padding = new RectOffset(16, 16, 16, 16);
@@ -227,6 +234,86 @@ namespace Project.CustomEditor
             leaveLabelRect.offsetMin = Vector2.zero;
             leaveLabelRect.offsetMax = Vector2.zero;
 
+            // --- Rumor popup — a sibling of the main panel (same Canvas), so it visually
+            // overlays it. Sized/positioned to sit centered on top, with a portrait square on
+            // the left and an [X] close button.
+            GameObject popupObj = new GameObject("RumorPopupPanel", typeof(RectTransform));
+            popupObj.transform.SetParent(canvas.transform, false);
+            RectTransform popupRect = popupObj.GetComponent<RectTransform>();
+            popupRect.anchorMin = new Vector2(0.5f, 0.5f);
+            popupRect.anchorMax = new Vector2(0.5f, 0.5f);
+            popupRect.pivot = new Vector2(0.5f, 0.5f);
+            popupRect.sizeDelta = new Vector2(440f, 220f); // v13: Widened to make room for the portrait square.
+            popupRect.anchoredPosition = Vector2.zero;
+
+            Image popupBg = popupObj.AddComponent<Image>();
+            popupBg.color = new Color(0.12f, 0.12f, 0.16f, 0.97f);
+            popupObj.AddComponent<CanvasGroup>();
+            CanvasGroupFader popupFader = popupObj.AddComponent<CanvasGroupFader>();
+            VideoPlayer popupVideoPlayer = popupObj.AddComponent<VideoPlayer>();
+            popupVideoPlayer.playOnAwake = false;
+
+            // v13: Portrait square (left side, fixed size regardless of popup size).
+            GameObject portraitObj = new GameObject("PortraitImage", typeof(RectTransform));
+            portraitObj.transform.SetParent(popupObj.transform, false);
+            Image portraitImage = portraitObj.AddComponent<Image>();
+            portraitImage.color = new Color(1f, 1f, 1f, 1f);
+            portraitImage.preserveAspect = true;
+            RectTransform portraitRect = portraitObj.GetComponent<RectTransform>();
+            portraitRect.anchorMin = new Vector2(0f, 0.5f);
+            portraitRect.anchorMax = new Vector2(0f, 0.5f);
+            portraitRect.pivot = new Vector2(0f, 0.5f);
+            portraitRect.sizeDelta = new Vector2(140f, 140f);
+            portraitRect.anchoredPosition = new Vector2(15f, 0f);
+
+            GameObject portraitVideoObj = new GameObject("PortraitVideoImage", typeof(RectTransform));
+            portraitVideoObj.transform.SetParent(portraitObj.transform, false);
+            RawImage portraitVideoImage = portraitVideoObj.AddComponent<RawImage>();
+            RectTransform portraitVideoRect = portraitVideoObj.GetComponent<RectTransform>();
+            portraitVideoRect.anchorMin = Vector2.zero;
+            portraitVideoRect.anchorMax = Vector2.one;
+            portraitVideoRect.offsetMin = Vector2.zero;
+            portraitVideoRect.offsetMax = Vector2.zero;
+            portraitVideoObj.SetActive(false); // Hidden unless the current NPC has a Portrait Video assigned.
+
+            GameObject popupTextObj = new GameObject("RumorPopupText", typeof(RectTransform));
+            popupTextObj.transform.SetParent(popupObj.transform, false);
+            TextMeshProUGUI popupText = popupTextObj.AddComponent<TextMeshProUGUI>();
+            popupText.alignment = TextAlignmentOptions.Center;
+            popupText.fontSize = 18;
+            popupText.text = "...";
+            RectTransform popupTextRect = popupTextObj.GetComponent<RectTransform>();
+            // v13: Shifted right to make room for the portrait square.
+            popupTextRect.anchorMin = new Vector2(0.40f, 0.08f);
+            popupTextRect.anchorMax = new Vector2(0.94f, 0.92f);
+            popupTextRect.offsetMin = Vector2.zero;
+            popupTextRect.offsetMax = Vector2.zero;
+
+            GameObject popupCloseObj = new GameObject("CloseButton", typeof(RectTransform));
+            popupCloseObj.transform.SetParent(popupObj.transform, false);
+            Image popupCloseBg = popupCloseObj.AddComponent<Image>();
+            popupCloseBg.color = new Color(0.5f, 0.15f, 0.15f, 1f);
+            Button popupCloseButton = popupCloseObj.AddComponent<Button>();
+            RectTransform popupCloseRect = popupCloseObj.GetComponent<RectTransform>();
+            popupCloseRect.anchorMin = new Vector2(1f, 1f);
+            popupCloseRect.anchorMax = new Vector2(1f, 1f);
+            popupCloseRect.pivot = new Vector2(1f, 1f);
+            popupCloseRect.sizeDelta = new Vector2(28f, 28f);
+            popupCloseRect.anchoredPosition = new Vector2(-6f, -6f);
+
+            GameObject popupCloseLabelObj = new GameObject("Label", typeof(RectTransform));
+            popupCloseLabelObj.transform.SetParent(popupCloseObj.transform, false);
+            TextMeshProUGUI popupCloseLabel = popupCloseLabelObj.AddComponent<TextMeshProUGUI>();
+            popupCloseLabel.text = "X";
+            popupCloseLabel.alignment = TextAlignmentOptions.Center;
+            popupCloseLabel.fontSize = 16;
+            popupCloseLabel.fontStyle = FontStyles.Bold;
+            RectTransform popupCloseLabelRect = popupCloseLabelObj.GetComponent<RectTransform>();
+            popupCloseLabelRect.anchorMin = Vector2.zero;
+            popupCloseLabelRect.anchorMax = Vector2.one;
+            popupCloseLabelRect.offsetMin = Vector2.zero;
+            popupCloseLabelRect.offsetMax = Vector2.zero;
+
             // --- Wire DialogueMenuUI ---
             SerializedObject serializedMenu = new SerializedObject(menuUI);
             serializedMenu.FindProperty("_panelFader").objectReferenceValue = panelFader;
@@ -240,6 +327,17 @@ namespace Project.CustomEditor
             serializedMenu.FindProperty("_carouselOptionButton").objectReferenceValue = carouselButton;
             serializedMenu.FindProperty("_carouselOptionLabel").objectReferenceValue = carouselLabel;
             serializedMenu.FindProperty("_carouselIndexText").objectReferenceValue = carouselIndexText;
+            serializedMenu.FindProperty("_panelAnchoredPosition").vector2Value = Vector2.zero;
+            serializedMenu.FindProperty("_panelSize").vector2Value = new Vector2(420f, 480f);
+            serializedMenu.FindProperty("_rumorPopupFader").objectReferenceValue = popupFader;
+            serializedMenu.FindProperty("_rumorPopupText").objectReferenceValue = popupText;
+            serializedMenu.FindProperty("_rumorPopupCloseButton").objectReferenceValue = popupCloseButton;
+            serializedMenu.FindProperty("_normalOptionColor").colorValue = Color.white;
+            serializedMenu.FindProperty("_usedOptionColor").colorValue = new Color(0.5f, 0.5f, 0.5f, 1f);
+            serializedMenu.FindProperty("_popupPortraitImage").objectReferenceValue = portraitImage;
+            serializedMenu.FindProperty("_popupPortraitVideoImage").objectReferenceValue = portraitVideoImage;
+            serializedMenu.FindProperty("_popupVideoPlayer").objectReferenceValue = popupVideoPlayer;
+            serializedMenu.FindProperty("_clickAudioSource").objectReferenceValue = clickAudioSource;
             serializedMenu.ApplyModifiedProperties();
 
             Selection.activeGameObject = panelObj;

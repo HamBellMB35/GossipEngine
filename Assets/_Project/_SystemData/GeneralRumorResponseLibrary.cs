@@ -12,6 +12,9 @@ namespace Project.Data
     [CreateAssetMenu(fileName = "NewGeneralRumorResponseLibrary", menuName = "Project/Gossip/General Response Library")]
     public class GeneralRumorResponseLibrary : ScriptableObject
     {
+        [Tooltip("If disabled, text from THIS library is never shown in the speech bubble — covers both the greeting (PlayGreeting) and the General-pool fallback tier inside PresentRumor. Audio and animation are unaffected. Rumor-specific text (RumorTemplate.ShowTextBubble) is controlled separately.")]
+        public bool ShowTextBubble = true;
+
         [Tooltip("Used when the reacting NPC currently views the player favorably.")]
         public List<RumorResponse> PositiveResponses = new List<RumorResponse>();
 

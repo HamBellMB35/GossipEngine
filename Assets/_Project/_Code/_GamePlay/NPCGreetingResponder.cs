@@ -73,7 +73,7 @@ namespace Project.GamePlay
                 return;
             }
 
-            if (_speechBubble != null && !string.IsNullOrEmpty(response.Value.ResponseText))
+            if (_responseLibrary.ShowTextBubble && _speechBubble != null && !string.IsNullOrEmpty(response.Value.ResponseText))
             {
                 _speechBubble.DisplayText(response.Value.ResponseText);
             }
@@ -97,6 +97,15 @@ namespace Project.GamePlay
                 : (_reputationService != null ? _reputationService.GetGeneralReputation() : 0f);
 
             return effectiveReputation >= 0f ? RumorAlignment.Positive : RumorAlignment.Negative;
+        }
+
+        /// <summary>
+        /// Forces this NPC's speech bubble to fade out immediately, interrupting whatever it's
+        /// currently doing. Called by NPCProximityGossip when the player walks away.
+        /// </summary>
+        public void HideSpeechBubble()
+        {
+            _speechBubble?.HideImmediately();
         }
     }
 }

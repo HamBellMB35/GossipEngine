@@ -67,6 +67,12 @@ namespace Project.CustomEditor
         // v18: Added for the scroll view wrapping OnGUI's content.
         private Vector2 _scrollPosition;
 
+        [Tooltip("Local position offset (within the NPC's worldspace UI canvas) where the speech bubble appears.")]
+        private Vector3 _speechBubbleOffset = new Vector3(0f, 80f, 0f);
+
+        [Tooltip("Local position offset (within the NPC's worldspace UI canvas) where the nameplate appears.")]
+        private Vector3 _nameplateOffset = new Vector3(0f, 120f, 0f);
+
         // v19: 3D pressable button rendering — see DrawGenerateButton().
         private bool _generateButtonPressed;
         private Texture2D _btnNormalTex;
@@ -176,6 +182,12 @@ namespace Project.CustomEditor
             _promptTextString = EditorGUILayout.TextField("Interaction Prompt Text", _promptTextString);
             _canvasHeightOffset = EditorGUILayout.FloatField("Canvas Height Offset (3D)", _canvasHeightOffset);
             _dialogueFontSize = EditorGUILayout.FloatField("Speech Bubble Font Size", _dialogueFontSize);
+            _speechBubbleOffset = EditorGUILayout.Vector3Field(
+                new GUIContent("Speech Bubble Offset", "Local position (within the worldspace UI canvas) where the speech bubble appears, relative to the prompt."),
+                _speechBubbleOffset);
+            _nameplateOffset = EditorGUILayout.Vector3Field(
+                new GUIContent("Nameplate Offset", "Local position (within the worldspace UI canvas) where the nameplate appears."),
+                _nameplateOffset);
 
             // v5: Unlocked — Master Canvas Dimensions is now fully editable instead of
             // GUI.enabled-locked to a fixed 150x35 value.
@@ -309,12 +321,27 @@ namespace Project.CustomEditor
                 }
                 else if (evt.type == EventType.MouseUp && evt.button == 0)
                 {
-                    if (_generateButtonPressed && isMouseOver)
-                    {
-                        ExecuteEntityGeneration();
-                    }
+                    // v21: BUG FIX — previously called ExecuteEntityGeneration() directly here,
+                    // then reset _generateButtonPressed afterward. AssetDatabase.CreateAsset
+                    // (deep inside ExecuteEntityGeneration) can trigger Unity's Project window
+                    // to refresh mid-event, which throws ExitGUIException to unwind the current
+                    // OnGUI call — skipping right past that reset (button got stuck visually
+                    // pressed) and cutting ExecuteEntityGeneration itself short (no success
+                    // dialog, no selection/ping of the new NPC, even though generation itself
+                    // likely still completed).
+                    //
+                    // Fixed two ways: state cleanup now happens BEFORE the risky call, and the
+                    // actual generation is deferred to the next editor update tick via
+                    // EditorApplication.delayCall — fully outside any GUI event, so
+                    // ExitGUIException can't interrupt it at all.
+                    bool shouldGenerate = _generateButtonPressed && isMouseOver;
                     _generateButtonPressed = false;
                     evt.Use();
+
+                    if (shouldGenerate)
+                    {
+                        EditorApplication.delayCall += ExecuteEntityGeneration;
+                    }
                 }
             }
 
@@ -611,6 +638,31 @@ namespace Project.CustomEditor
             // the speech bubble (its children) facing the camera continuously.
             canvasObj.AddComponent<Billboard>();
 
+            // v20: ELEMENT 0: NAMEPLATE — shown above the prompt/bubble, fading in/out based
+            // on player distance (see NPCNameplate on rootInstance below).
+            GameObject nameplateObj = new GameObject("NPC_Nameplate");
+            nameplateObj.transform.SetParent(canvasObj.transform, false);
+
+            nameplateObj.AddComponent<CanvasGroup>();
+            CanvasGroupFader nameplateFader = nameplateObj.AddComponent<CanvasGroupFader>();
+
+            TextMeshProUGUI nameplateText = nameplateObj.AddComponent<TextMeshProUGUI>();
+            nameplateText.alignment = TextAlignmentOptions.Center;
+            nameplateText.fontSize = 12f;
+            nameplateText.fontStyle = FontStyles.Bold;
+            nameplateText.text = resolvedName;
+            nameplateText.outlineWidth = 0.2f;
+            nameplateText.outlineColor = Color.black;
+
+            RectTransform nameplateRect = nameplateObj.GetComponent<RectTransform>();
+            nameplateRect.sizeDelta = new Vector2(200f, 40f);
+
+            NPCNameplate nameplateComponent = rootInstance.AddComponent<NPCNameplate>();
+            SerializedObject serializedNameplate = new SerializedObject(nameplateComponent);
+            serializedNameplate.FindProperty("_fader").objectReferenceValue = nameplateFader;
+            serializedNameplate.FindProperty("_positionOffset").vector3Value = _nameplateOffset;
+            serializedNameplate.ApplyModifiedProperties();
+
             // ELEMENT 1: INTERACTION PROMPT BOX (Permanently Fixed Hierarchy)
             GameObject promptBackground = new GameObject("Graphic_Placeholder_Background");
             promptBackground.transform.SetParent(canvasObj.transform, false);
@@ -645,10 +697,17 @@ namespace Project.CustomEditor
             // ELEMENT 2: SEPARATE SPEECH BUBBLE LAYER
             GameObject speechBubbleNode = new GameObject("NPC_Dialogue_Speech_Bubble");
             speechBubbleNode.transform.SetParent(canvasObj.transform, false);
-            speechBubbleNode.transform.localPosition = new Vector3(0f, 80f, 0f);
 
             CanvasGroup speechCanvasGroup = speechBubbleNode.AddComponent<CanvasGroup>();
             NPCSpeechBubble speechBubble = speechBubbleNode.AddComponent<NPCSpeechBubble>();
+
+            // v22: Set via the component's own live-editable _positionOffset field (applied
+            // through OnValidate) instead of a one-time direct transform assignment — keeps
+            // the wizard's default and the component's ongoing Inspector control as a single
+            // source of truth.
+            SerializedObject serializedSpeechBubble = new SerializedObject(speechBubble);
+            serializedSpeechBubble.FindProperty("_positionOffset").vector3Value = _speechBubbleOffset;
+            serializedSpeechBubble.ApplyModifiedProperties();
 
             GameObject speechBackground = new GameObject("Speech_Graphic_Plate_Background");
             speechBackground.transform.SetParent(speechBubbleNode.transform, false);

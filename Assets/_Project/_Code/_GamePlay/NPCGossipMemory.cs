@@ -84,6 +84,26 @@ namespace Project.GamePlay
 
         public IReadOnlyList<CustomDialogueOption> CustomOptions => _customOptions;
 
+        [Header("Portrait (shown in the rumor popup)")]
+        [Tooltip("Optional static portrait of this NPC.")]
+        [SerializeField] private Sprite _portraitImage;
+
+        [Tooltip("Optional short video of this NPC, played instead of the static portrait if assigned.")]
+        [SerializeField] private UnityEngine.Video.VideoClip _portraitVideo;
+
+        public Sprite PortraitImage => _portraitImage;
+        public UnityEngine.Video.VideoClip PortraitVideo => _portraitVideo;
+
+        /// <summary>
+        /// v19: Forces this NPC's speech bubble to fade out immediately, interrupting whatever
+        /// it's currently doing. Called when the player walks away or ends the conversation, so
+        /// the bubble doesn't linger on its own independent timer after the interaction ends.
+        /// </summary>
+        public void HideSpeechBubble()
+        {
+            _speechBubble?.HideImmediately();
+        }
+
         [Header("Voice Settings")]
         [Tooltip("Which gendered voice line this NPC uses when a response provides both. Falls back to whichever clip is actually assigned if the selected gender's is empty.")]
         [SerializeField] private VoiceGender _voiceGender = VoiceGender.Male;
@@ -193,7 +213,9 @@ namespace Project.GamePlay
 
             if (response == null) return;
 
-            if (_speechBubble != null && !string.IsNullOrEmpty(response.Value.ResponseText))
+            // v23: Gated on the library's own ShowTextBubble toggle, since a greeting has no
+            // RumorTemplate of its own to check.
+            if (_responseLibrary.ShowTextBubble && _speechBubble != null && !string.IsNullOrEmpty(response.Value.ResponseText))
             {
                 _speechBubble.DisplayText(response.Value.ResponseText);
             }
@@ -223,17 +245,70 @@ namespace Project.GamePlay
         }
 
         /// <summary>
-        /// Presents a rumor on this NPC right now. See the class-level comment above for the
-        /// three-tier content selection (Specific Response -> General pool by player standing
-        /// -> rumor's own default text/audio). Animation is always driven by the rumor's own
-        /// AssociatedTone, regardless of which text/audio tier was used.
+        /// Presents a rumor on this NPC right now: shows its resolved text in the world-space
+        /// speech bubble, plays audio/animation, and marks it as presented. See the class-level
+        /// comment above for the three-tier content selection.
         /// </summary>
         public void PresentRumor(RumorTemplate rumor)
         {
-            if (rumor == null) return;
+            PresentRumorInternal(rumor, showInWorldBubble: true);
+        }
+
+        /// <summary>
+        /// v20: Same resolution/audio/animation as PresentRumor, but does NOT show text in the
+        /// world-space speech bubble — instead returns the resolved text, for a caller (e.g.
+        /// the dialogue menu's own popup) to display however it wants. Used when the player
+        /// picks a specific rumor from the "What do you hear on the streets?" sub-list, since
+        /// the floating world-space bubble may be hard to see behind the menu panel.
+        /// </summary>
+        /// <summary>
+        /// v22: Non-consuming preview of what PresentRumor/PresentRumorForPopup would actually
+        /// display for this rumor RIGHT NOW — without any side effects (no counter advance, no
+        /// HasBeenPresented change, no audio/animation). Used for the dialogue menu's rumor
+        /// list labels, so the preview text matches what clicking will actually produce for
+        /// the Specific-response tier. The General-pool tier's preview may occasionally differ
+        /// from the actual click result (it's a fresh random pick each time, deliberately not
+        /// state-mutating for a mere preview) — only the Specific tier is guaranteed exact,
+        /// which is the common case worth previewing accurately.
+        /// </summary>
+        public string PeekRumorPreviewText(RumorTemplate rumor)
+        {
+            if (rumor == null) return null;
+
+            RumorResponse? specificResponse = _gossipManager?.PeekSpecificResponse(rumor);
+            RumorResponse? chosenResponse;
+
+            if (specificResponse != null)
+            {
+                chosenResponse = specificResponse;
+            }
+            else if (_responseLibrary != null)
+            {
+                RumorAlignment fallbackPool = GetPlayerStandingAlignment();
+                chosenResponse = _responseLibrary.GetRandomResponse(fallbackPool);
+            }
+            else
+            {
+                chosenResponse = null;
+            }
+
+            return (chosenResponse.HasValue && !string.IsNullOrEmpty(chosenResponse.Value.ResponseText))
+                ? chosenResponse.Value.ResponseText
+                : rumor.RumorDisplayText;
+        }
+
+        public string PresentRumorForPopup(RumorTemplate rumor)
+        {
+            return PresentRumorInternal(rumor, showInWorldBubble: false);
+        }
+
+        private string PresentRumorInternal(RumorTemplate rumor, bool showInWorldBubble)
+        {
+            if (rumor == null) return null;
 
             RumorResponse? specificResponse = _gossipManager?.GetSpecificResponse(rumor);
             RumorResponse? chosenResponse;
+            bool usedLibraryTier = false;
 
             if (specificResponse != null)
             {
@@ -245,6 +320,7 @@ namespace Project.GamePlay
                 chosenResponse = fallbackPool == RumorAlignment.Positive
                     ? _responseLibrary.GetRandomResponse(fallbackPool, ref _lastPositiveIndex)
                     : _responseLibrary.GetRandomResponse(fallbackPool, ref _lastNegativeIndex);
+                usedLibraryTier = true;
             }
             else
             {
@@ -264,7 +340,13 @@ namespace Project.GamePlay
                 audioToPlay = rumor.VoiceLineAudio;
             }
 
-            if (rumor.ShowTextBubble && !string.IsNullOrEmpty(textToShow))
+            // v23: When the library (General-pool) tier produced the text, it must ALSO
+            // respect the library's own ShowTextBubble toggle, in addition to the rumor's.
+            // Specific-tier and rumor-default text are unaffected — only library-sourced text
+            // gets this extra gate.
+            bool allowedByLibrary = !usedLibraryTier || (_responseLibrary != null && _responseLibrary.ShowTextBubble);
+
+            if (showInWorldBubble && rumor.ShowTextBubble && allowedByLibrary && !string.IsNullOrEmpty(textToShow))
             {
                 if (_speechBubble != null)
                 {
@@ -301,6 +383,8 @@ namespace Project.GamePlay
             }
 
             Debug.Log($"<color=cyan>[NPCGossipMemory]</color> '{gameObject.name}' presented rumor '{rumor.RumorID}'.");
+
+            return textToShow;
         }
 
         /// <summary>

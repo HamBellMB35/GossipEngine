@@ -30,11 +30,14 @@ namespace Project.GamePlay
 
         private bool _isPlayerInZone = false;
         private bool _isOnCooldown = false;
+        private bool _isDeferringInteraction = false;
         private NpcAddonRegistry _addonRegistry;
         private NPCGossipMemory _gossipMemory;
         private NPCAnimationBridge _animationBridge;
         private NPCGreetingResponder _greetingResponder;
         private NPCReputationOpinion _reputationOpinion;
+        private Project.UI.NPCNameplate _nameplate;
+        private AudioSource _audioSource;
 
         private void Awake()
         {
@@ -43,6 +46,8 @@ namespace Project.GamePlay
             _animationBridge = GetComponent<NPCAnimationBridge>();
             _greetingResponder = GetComponent<NPCGreetingResponder>();
             _reputationOpinion = GetComponent<NPCReputationOpinion>();
+            _nameplate = GetComponent<Project.UI.NPCNameplate>();
+            _audioSource = GetComponent<AudioSource>();
         }
 
         private void Start()
@@ -80,6 +85,23 @@ namespace Project.GamePlay
 
             interactionPromptFader?.Hide();
 
+            // v9: Force-close the dialogue menu if it's currently open for THIS NPC — walking
+            // away now has the same full cleanup effect as clicking Leave. Close() itself
+            // handles hiding this NPC's speech bubble.
+            if (DialogueMenuUI.Instance != null && _gossipMemory != null && DialogueMenuUI.Instance.IsOpenFor(_gossipMemory))
+            {
+                DialogueMenuUI.Instance.Close();
+            }
+            else
+            {
+                // Menu wasn't open — still make sure a lingering speech bubble (e.g. from an
+                // Auto-Proximity greeting or the old ScriptedDialogues fallback) fades out now
+                // instead of waiting out its own internal timer.
+                speechBubble?.HideImmediately();
+                _gossipMemory?.HideSpeechBubble();
+                _greetingResponder?.HideSpeechBubble();
+            }
+
             // Don't leave the NPC frozen mid-animation just because the player walked off.
             if (_animationBridge != null)
             {
@@ -99,9 +121,54 @@ namespace Project.GamePlay
 
         public void ExecuteInteraction()
         {
-            if (_isOnCooldown) return;
+            if (_isOnCooldown || _isDeferringInteraction) return;
+
+            // v10: If this NPC is currently mid-audio (e.g. reacting to a just-witnessed
+            // PlayerDeedBroadcaster event), defer the interaction instead of immediately
+            // playing new audio over it — Unity's AudioSource.Play() always cuts off whatever
+            // is currently playing, which previously caused witness-reaction audio to get cut
+            // off by the interaction's own greeting audio if both fired close together. This
+            // is intentionally one-directional: a NEW witness reaction is still allowed to
+            // interrupt an already-open interaction, since that's treated as more urgent.
+            if (_audioSource != null && _audioSource.isPlaying)
+            {
+                _isDeferringInteraction = true;
+                StartCoroutine(DeferInteractionUntilAudioFinishes());
+                return;
+            }
+
+            ExecuteInteractionImmediate();
+        }
+
+        private IEnumerator DeferInteractionUntilAudioFinishes()
+        {
+            while (_audioSource != null && _audioSource.isPlaying)
+            {
+                yield return null;
+            }
+
+            _isDeferringInteraction = false;
+            ExecuteInteractionImmediate();
+        }
+
+        private void ExecuteInteractionImmediate()
+        {
+            // v11: Click sound for [E] press itself — covers every interaction path
+            // uniformly (vendor hijack, dialogue menu opening, greeting responder, old
+            // fallback). No-ops silently if no click sound is assigned.
+            Project.UI.DialogueMenuUI.Instance?.PlayClickSound();
 
             interactionPromptFader?.Hide();
+
+            // v10: Clear any lingering nameplate/bubble the instant the player actually
+            // interacts, instead of stale proximity-driven UI overlapping with whatever comes
+            // next (menu, vendor, greeting). Nameplate stays suppressed for the whole
+            // interaction — see InteractionCooldownSequence, which un-suppresses it once the
+            // interaction actually ends (including once the dialogue menu closes).
+            _nameplate?.SetSuppressed(true);
+            speechBubble?.HideImmediately();
+            _gossipMemory?.HideSpeechBubble();
+            _greetingResponder?.HideSpeechBubble();
 
             IInteractionExtension extension = _addonRegistry != null
                 ? _addonRegistry.GetActiveInteractionExtension()
@@ -109,7 +176,7 @@ namespace Project.GamePlay
 
             if (extension != null && extension.OnExtendInteraction())
             {
-                // v8: Vendor/Quest hijack behavior is UNCHANGED — instant, no menu, starts
+                // Vendor/Quest hijack behavior is UNCHANGED — instant, no menu, starts
                 // cooldown immediately, exactly as before.
                 StartCoroutine(InteractionCooldownSequence());
                 return;
@@ -182,6 +249,11 @@ namespace Project.GamePlay
 
         private IEnumerator InteractionCooldownSequence()
         {
+            // v10: Un-suppress the nameplate immediately once the interaction ends (menu
+            // closed, vendor hijack finished, etc.) — no reason to keep it hidden through the
+            // whole cooldown wait too.
+            _nameplate?.SetSuppressed(false);
+
             _isOnCooldown = true;
             yield return new WaitForSeconds(interactionCooldownDuration);
             _isOnCooldown = false;

@@ -13,15 +13,17 @@ MonoBehaviour:
   m_Name: Rumor_HamiltonAchievement
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.RumorTemplate
   RumorID: Hamitlon_Achievement
-  ShowTextBubble: 1
+  Alignment: 0
+  ShowTextBubble: 0
   RumorDisplayText: Hamilton is the Best Unity Developer in the world!
   VoiceLineAudio: {fileID: 8300000, guid: 80b252adc0ae0ae47a4bbd389909adc0, type: 3}
+  SpecificResponses: []
+  SpecificResponseUsageLimit: 3
   AssociatedTone: {fileID: 11400000, guid: 37e2a6ade7da9a44fb8abe37c30aa0f1, type: 2}
   TriggerMode: 0
   ShareLikelihood: 62
   TriggerDistance: 30
-  GeneralReputationImpact: -15
+  GeneralReputationMagnitude: 10
   TargetFactionID: Town_People
-  FactionReputationImpact: 7
-  WitnessOpinionImpact: -40
+  WitnessOpinionMagnitude: 25
   HearsayCredibility: 0.4

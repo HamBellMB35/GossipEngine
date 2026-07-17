@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.RumorTemplate
   RumorID: Test_Positive
   Alignment: 0
-  ShowTextBubble: 1
-  RumorDisplayText: THIS IS A PRESENTATION FALLBACK
+  ShowTextBubble: 0
+  RumorDisplayText: THIS IS A PRESENTATION FALLBACK FOR test positive
   VoiceLineAudio: {fileID: 8300000, guid: 44c588c9913a3fa46982f738d1aff5cd, type: 3}
   SpecificResponses:
   - ResponseText: This is a specific rumor response 1

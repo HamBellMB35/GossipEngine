@@ -30,9 +30,42 @@ namespace Project.UI
         [Tooltip("How fast the text panel fades back down to completely invisible.")]
         [Range(0.05f, 4f)][SerializeField] private float fadeOutDuration = 0.75f;
 
+        [Header("Enable / Disable")]
+        [Tooltip("If disabled, this NPC's speech bubble never displays anything, regardless of what tries to show text (rumors, greetings, dialogue menu, the old scripted-dialogue fallback, etc.). Audio and animation are unaffected.")]
+        [SerializeField] private bool _useSpeechBubble = true;
+
+        [Header("Placement")]
+        [Tooltip("Local position of this speech bubble relative to its parent (the NPC's worldspace UI canvas). Adjust anytime to move the bubble — updates live in the Editor, no need to enter Play mode.")]
+        [SerializeField] private Vector3 _positionOffset = new Vector3(0f, 80f, 0f);
+
+        private RectTransform _rectTransform;
+
         private void Awake()
         {
             InitializeComponents();
+            ApplyPositionOffset();
+        }
+
+        /// <summary>
+        /// Live-updates the bubble's position the moment _positionOffset changes in the
+        /// Inspector — works in Edit mode too, no need to enter Play mode to see it move.
+        /// </summary>
+        private void OnValidate()
+        {
+            ApplyPositionOffset();
+        }
+
+        private void ApplyPositionOffset()
+        {
+            if (_rectTransform == null)
+            {
+                _rectTransform = GetComponent<RectTransform>();
+            }
+
+            if (_rectTransform != null)
+            {
+                _rectTransform.localPosition = _positionOffset;
+            }
         }
 
         /// <summary>
@@ -64,6 +97,8 @@ namespace Project.UI
         /// </summary>
         public void DisplayText(string message)
         {
+            if (!_useSpeechBubble) return; // v3: Global per-NPC toggle — this NPC never shows bubble text at all.
+
             if (!_isInitialized) InitializeComponents();
             if (_dialogueText == null || _canvasGroup == null) return;
 
@@ -78,6 +113,25 @@ namespace Project.UI
 
             // Start the snappy fade sequence pipeline right now
             _activeDisplayWorker = StartCoroutine(AnimateBubbleSequence());
+        }
+
+        /// <summary>
+        /// v2: Interrupts whatever this bubble is currently doing (fading in, holding, or
+        /// already fading out) and fades to fully invisible right away, ignoring the normal
+        /// Visible Hold Duration. Used when the player walks away or ends the conversation —
+        /// previously the bubble would linger until its own internal timer ran out regardless.
+        /// </summary>
+        public void HideImmediately()
+        {
+            if (!_isInitialized) return;
+            if (_canvasGroup == null) return;
+
+            if (_activeDisplayWorker != null)
+            {
+                StopCoroutine(_activeDisplayWorker);
+            }
+
+            _activeDisplayWorker = StartCoroutine(FadeOutImmediateRoutine());
         }
 
         /// <summary>
@@ -115,6 +169,27 @@ namespace Project.UI
             _canvasGroup.alpha = 0f;
 
             // Lock structural layers back down cleanly
+            _canvasGroup.interactable = false;
+            _canvasGroup.blocksRaycasts = false;
+        }
+
+        /// <summary>
+        /// Same fade-out easing as the normal sequence's final phase, but starts immediately
+        /// from whatever the current alpha is, skipping the hold entirely.
+        /// </summary>
+        private IEnumerator FadeOutImmediateRoutine()
+        {
+            float timeElapsed = 0f;
+            float initialAlpha = _canvasGroup.alpha;
+
+            while (timeElapsed < fadeOutDuration)
+            {
+                timeElapsed += Time.deltaTime;
+                _canvasGroup.alpha = Mathf.Lerp(initialAlpha, 0f, timeElapsed / fadeOutDuration);
+                yield return null;
+            }
+            _canvasGroup.alpha = 0f;
+
             _canvasGroup.interactable = false;
             _canvasGroup.blocksRaycasts = false;
         }

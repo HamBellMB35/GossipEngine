@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_Brandy_the_Drunk_639197583969645033
+  m_Name: NPC_Profile_Hamilton_will_get_his_canadian_PR_in_2026_639198480497716728
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
-  DefaultName: Brandy the Drunk
+  DefaultName: Hamilton will get his canadian PR in 2026
   RigStyle: 0
   BrainStyle: 0
   InteractionPromptText: 'Talk [E]'
