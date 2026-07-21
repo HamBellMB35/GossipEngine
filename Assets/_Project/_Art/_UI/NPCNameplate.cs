@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Project.UI
+namespace TownsPeople.UI
 {
     /// <summary>
     /// Shows/hides this NPC's nameplate based on the player's distance, with a fade

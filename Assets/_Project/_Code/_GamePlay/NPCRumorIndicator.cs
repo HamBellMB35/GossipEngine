@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Project.GamePlay
+namespace TownsPeople.GamePlay
 {
     /// <summary>
     /// OPTIONAL, fully standalone visualization add-on. Spawns one small, randomly-colored

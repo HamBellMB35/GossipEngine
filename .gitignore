@@ -76,6 +76,7 @@ crashlytics-build.properties
 
 /[Aa]ssets/DragonsanStudios
 /[Aa]ssets/Starter Assets
+/[Aa]ssets/MedievalKingdomUI
 
 # Local Secrets Repository Blocks
 secret_key.txt

@@ -1,8 +1,8 @@
 using UnityEngine;
-using Project.Data;
-using Project.GamePlay;
+using TownsPeople.Data;
+using TownsPeople.GamePlay;
 
-namespace Project.Architecture
+namespace TownsPeople.Architecture
 {
     // NOTE: This is the muscle of our system. Notice it does NOT inherit from MonoBehaviour!
     // It doesn't need to sit on a GameObject in the scene to work.

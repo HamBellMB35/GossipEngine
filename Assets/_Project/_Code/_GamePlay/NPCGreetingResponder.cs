@@ -1,10 +1,11 @@
 using UnityEngine;
 using VContainer;
-using Project.UI;
-using Project.Data;
-using Project.Services;
+using TownsPeople.UI;
+using TownsPeople.Data;
+using TownsPeople.Services;
+using TownsPeople.GamePlay;
 
-namespace Project.GamePlay
+namespace TownsPeople.GamePlay
 {
     /// <summary>
     /// Lightweight, standalone greeting behavior: reacts to the player with a Positive or

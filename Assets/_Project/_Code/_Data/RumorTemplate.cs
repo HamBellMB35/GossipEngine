@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using Project.Data;
+using TownsPeople.Data;
 
-namespace Project.Data
+namespace TownsPeople.Data
 {
     // Determines how the player interacts with this specific rumor.
     public enum RumorTriggerMode { AutoProximity, ManualTalk }

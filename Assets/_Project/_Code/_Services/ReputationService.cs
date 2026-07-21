@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using Project.Data;
+using TownsPeople.Data;
 
-namespace Project.Services
+namespace TownsPeople.Services
 {
     /// <summary>
     /// The single source of truth for the player's reputation. Registered once as a

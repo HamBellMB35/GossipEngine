@@ -5,11 +5,11 @@ using TMPro;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Project.Data;
-using Project.GamePlay;
-using Project.UI;
+using TownsPeople.Data;
+using TownsPeople.GamePlay;
+using TownsPeople.UI;
 
-namespace Project.CustomEditor
+namespace TownsPeople.CustomEditor
 {
     // NOTE: This wizard automates the creation of modular NPC prefabs.
     // The CanvasGroup hierarchy has been permanently patched, and UI font sizing is now fully exposed for Asset Store distribution.
@@ -22,7 +22,7 @@ namespace Project.CustomEditor
 
     /// <summary>
     /// Professional asset store pipeline wizard window that dynamically scans project assemblies.
-    /// Perfectly synchronized with Project.Data to auto-seed configurations into new profiles.
+    /// Perfectly synchronized with TownsPeople.Data to auto-seed configurations into new profiles.
     /// </summary>
     public class NPCCreatorWizardWindow : EditorWindow
     {
@@ -59,10 +59,10 @@ namespace Project.CustomEditor
         private string _factionId = "";
 
         [Tooltip("Which gendered voice line this NPC uses for rumor/response audio that provides both a Male and Female clip.")]
-        private Project.Data.VoiceGender _voiceGender = Project.Data.VoiceGender.Male;
+        private TownsPeople.Data.VoiceGender _voiceGender = TownsPeople.Data.VoiceGender.Male;
 
         [Tooltip("Shared library of generic Positive/Negative reactions, used by full NPCs as their rumor fallback and by Non-Dialogue NPCs as their only response source.")]
-        private Project.Data.GeneralRumorResponseLibrary _responseLibrary;
+        private TownsPeople.Data.GeneralRumorResponseLibrary _responseLibrary;
 
         // v18: Added for the scroll view wrapping OnGUI's content.
         private Vector2 _scrollPosition;
@@ -93,7 +93,7 @@ namespace Project.CustomEditor
         private Texture2D _btnDisabledTex;
         private GUIStyle _generateButtonLabelStyle;
 
-        [MenuItem("Tools/NPC Creator/Launch Wizard Window")]
+        [MenuItem("Tools/TownsPeople/NPC Creator")]
         public static void ShowWindow()
         {
             NPCCreatorWizardWindow window = GetWindow<NPCCreatorWizardWindow>("NPC Creator Wizard");
@@ -103,8 +103,8 @@ namespace Project.CustomEditor
 
         private void OnEnable()
         {
-            _hasVendorAddon = Type.GetType("Project.GamePlay.VendorComponentAddon") != null;
-            _hasQuestAddon = Type.GetType("Project.GamePlay.QuestComponentAddon") != null;
+            _hasVendorAddon = Type.GetType("TownsPeople.GamePlay.VendorComponentAddon") != null;
+            _hasQuestAddon = Type.GetType("TownsPeople.GamePlay.QuestComponentAddon") != null;
         }
 
         // --- Editor GUI Layout ---
@@ -242,9 +242,9 @@ namespace Project.CustomEditor
             // separate toggle. This section just holds the shared response library field.
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Responses", EditorStyles.boldLabel);
-            _responseLibrary = (Project.Data.GeneralRumorResponseLibrary)EditorGUILayout.ObjectField(
+            _responseLibrary = (TownsPeople.Data.GeneralRumorResponseLibrary)EditorGUILayout.ObjectField(
                 new GUIContent("General Response Library", "Shared Positive/Negative response pools. Required for Non-Dialogue NPCs (their only response source); optional for full NPCs (used as their rumor fallback)."),
-                _responseLibrary, typeof(Project.Data.GeneralRumorResponseLibrary), false);
+                _responseLibrary, typeof(TownsPeople.Data.GeneralRumorResponseLibrary), false);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
@@ -257,7 +257,7 @@ namespace Project.CustomEditor
             _factionId = EditorGUILayout.TextField(
                 new GUIContent("Faction ID (optional)", "Sets this NPC's NPCReputationOpinion faction. Leave empty to use only general reputation."),
                 _factionId);
-            _voiceGender = (Project.Data.VoiceGender)EditorGUILayout.EnumPopup(
+            _voiceGender = (TownsPeople.Data.VoiceGender)EditorGUILayout.EnumPopup(
                 new GUIContent("Voice Gender", "Which gendered voice line this NPC uses for rumor/response audio that provides both a Male and Female clip."),
                 _voiceGender);
             EditorGUILayout.EndVertical();
@@ -801,12 +801,12 @@ namespace Project.CustomEditor
             // Conditional Reflection Addons
             if (_selectedVariant == NpcVariantType.Vendor_NPC)
             {
-                Type vendorType = Type.GetType("Project.GamePlay.VendorComponentAddon");
+                Type vendorType = Type.GetType("TownsPeople.GamePlay.VendorComponentAddon");
                 if (vendorType != null) rootInstance.AddComponent(vendorType);
             }
             else if (_selectedVariant == NpcVariantType.QuestGiver_NPC)
             {
-                Type questType = Type.GetType("Project.GamePlay.QuestComponentAddon");
+                Type questType = Type.GetType("TownsPeople.GamePlay.QuestComponentAddon");
                 if (questType != null) rootInstance.AddComponent(questType);
             }
 

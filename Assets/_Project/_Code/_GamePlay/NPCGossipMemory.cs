@@ -4,11 +4,11 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.Events;
 using VContainer;
-using Project.UI;
-using Project.Data;
-using Project.Services;
+using TownsPeople.UI;
+using TownsPeople.Data;
+using TownsPeople.Services;
 
-namespace Project.GamePlay
+namespace TownsPeople.GamePlay
 {
     // v8: PresentRumor now chooses WHAT to say from three tiers, in order:
     // 1. The rumor's own SpecificResponses (rotated, shared usage count game-wide via

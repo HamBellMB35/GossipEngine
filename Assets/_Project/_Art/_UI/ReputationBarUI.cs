@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 using VContainer;
-using Project.Services;
+using TownsPeople.Services;
 
-namespace Project.UI
+namespace TownsPeople.UI
 {
     /// <summary>
     /// OPTIONAL visualization tool. Displays the player's General reputation and a dynamically

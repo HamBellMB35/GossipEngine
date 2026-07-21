@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace Project.GamePlay
+namespace TownsPeople.GamePlay
 {
     /// <summary>
     /// Central lookup point for "what add-ons does this NPC have."
@@ -16,7 +16,7 @@ namespace Project.GamePlay
     /// </summary>
     public class NpcAddonRegistry : MonoBehaviour
     {
-        private readonly Dictionary<System.Type, INPCAddon> _addonsByType = new Dictionary<System.Type, INPCAddon>();
+        private readonly Dictionary<System.Type, INpcAddon> _addonsByType = new Dictionary<System.Type, INpcAddon>();
         private IInteractionExtension _activeInteractionExtension;
 
         private void Awake()
@@ -33,8 +33,8 @@ namespace Project.GamePlay
         {
             _addonsByType.Clear();
 
-            INPCAddon[] foundAddons = GetComponents<INPCAddon>();
-            foreach (INPCAddon addon in foundAddons)
+            INpcAddon[] foundAddons = GetComponents<INpcAddon>();
+            foreach (INpcAddon addon in foundAddons)
             {
                 System.Type concreteType = addon.GetType();
                 if (!_addonsByType.ContainsKey(concreteType))
@@ -66,7 +66,7 @@ namespace Project.GamePlay
         /// </summary>
         public bool TryGetAddon<T>(out T addon) where T : class
         {
-            foreach (INPCAddon cached in _addonsByType.Values)
+            foreach (INpcAddon cached in _addonsByType.Values)
             {
                 if (cached is T match)
                 {
@@ -100,6 +100,6 @@ namespace Project.GamePlay
         /// <summary>
         /// All add-ons currently attached to this NPC, for editor/debug display.
         /// </summary>
-        public IEnumerable<INPCAddon> GetAllAddons() => _addonsByType.Values;
+        public IEnumerable<INpcAddon> GetAllAddons() => _addonsByType.Values;
     }
 }

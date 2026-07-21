@@ -1,9 +1,10 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
-using Project.GamePlay;
-using Project.Data;
+using TownsPeople.GamePlay;
+using TownsPeople.Data;
 
-namespace Project.Testing
+
+namespace TownsPeople.Testing
 {
     /// <summary>
     /// Manual test harness for the witness step of the Gossip Propagation Engine. Simulates

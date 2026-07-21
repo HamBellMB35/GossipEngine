@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
-using Project.Data;
+using TownsPeople.Data;
 
-namespace Project.Services
+namespace TownsPeople.Services
 {
     // v2: Added real functionality. Tracks, per RumorID, how many times a Specific Response
     // has been used ACROSS ALL NPCs (not per-NPC) — this is what makes a rumor's unique

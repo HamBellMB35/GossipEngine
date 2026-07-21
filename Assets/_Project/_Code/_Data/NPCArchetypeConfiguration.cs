@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Project.Data
+namespace TownsPeople.Data
 {
     // NOTE: Structural enums to track rig styles and choice matrices across your asset package layers.
     public enum AnimationRigType { Humanoid, Generic }

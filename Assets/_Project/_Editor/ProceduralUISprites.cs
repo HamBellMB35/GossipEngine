@@ -3,7 +3,7 @@ using System.IO;
 using UnityEngine;
 using UnityEditor;
 
-namespace Project.CustomEditor
+namespace TownsPeople.CustomEditor
 {
     /// <summary>
     /// Generates rounded-rectangle textures (with an optional border and a vertical gradient

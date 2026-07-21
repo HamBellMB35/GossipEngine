@@ -1,7 +1,8 @@
 using System.Collections.Generic;
+using TownsPeople.Data;
 using UnityEngine;
 
-namespace Project.Data
+namespace TownsPeople.Data
 {
     /// <summary>
     /// Shared, game-wide pools of generic reactions, used once a rumor's own SpecificResponses

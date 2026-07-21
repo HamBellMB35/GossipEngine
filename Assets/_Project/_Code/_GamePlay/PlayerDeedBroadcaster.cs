@@ -1,10 +1,11 @@
 using System.Collections.Generic;
 using UnityEngine;
 using VContainer;
-using Project.Services;
-using Project.Data;
+using TownsPeople.Services;
+using TownsPeople.Data;
 
-namespace Project.GamePlay
+
+namespace TownsPeople.GamePlay
 {
     /// <summary>
     /// Represents the WITNESS step of the gossip pipeline. Call BroadcastDeed() whenever the

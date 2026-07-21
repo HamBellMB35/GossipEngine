@@ -1,6 +1,6 @@
 using System;
 
-namespace Project.Data
+namespace TownsPeople.Data
 {
     // NOTE: This class is not a ScriptableObject, but a regular C# class. It is used to store the runtime state of a rumor for a specific NPC.
 

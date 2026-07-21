@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Project.Data
+namespace TownsPeople.Data
 {
     // Determines if this tone triggers an animation, plays once, or loops.
     public enum PlaybackMode { None, PlayOnce, Loop }

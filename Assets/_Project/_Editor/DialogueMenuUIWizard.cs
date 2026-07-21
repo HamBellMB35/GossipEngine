@@ -1,22 +1,33 @@
 #if UNITY_EDITOR
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UI;
 using UnityEngine.Video;
 using TMPro;
-using Project.UI;
-using Project.GamePlay;
+using TownsPeople.UI;
+using TownsPeople.GamePlay;
 
-namespace Project.CustomEditor
+namespace TownsPeople.CustomEditor
 {
     /// <summary>
     /// One-click generator for the shared Dialogue Menu UI. Builds the whole hierarchy — name
     /// header, a flexible middle region (housing either the scrollable list or the carousel
     /// slot), and a Leave button pinned to the bottom — and wires DialogueMenuUI automatically.
+    ///
+    /// Also supports "Use Existing Prefab" mode: a developer can drop in their own custom UI
+    /// prefab and have UIElementAutoWirer scan it for matching elements by name + component
+    /// type, wiring DialogueMenuUI automatically instead of generating UI from scratch.
     /// </summary>
+    // v18: Added "Use Existing Prefab" mode — see UIElementAutoWirer.
     public class DialogueMenuUIWizard : EditorWindow
     {
         private const string OutputFolder = "Assets/NPC Creator/Generated UI";
+
+        private enum WizardMode { GenerateNew, UseExistingPrefab }
+        private WizardMode _mode = WizardMode.GenerateNew;
+        private GameObject _sourcePrefab;
 
         [Header("Visual Style")]
         private float _cornerRadius = 14f;
@@ -27,7 +38,7 @@ namespace Project.CustomEditor
         private Color _buttonFillTop = new Color(0.32f, 0.32f, 0.36f, 1f);
         private Color _buttonFillBottom = new Color(0.19f, 0.19f, 0.23f, 1f);
 
-        [MenuItem("Tools/NPC Creator/Generate Dialogue Menu UI")]
+        [MenuItem("Tools/TownsPeople/Generate Dialogue Menu UI")]
         public static void ShowWindow()
         {
             DialogueMenuUIWizard window = GetWindow<DialogueMenuUIWizard>("Dialogue Menu UI Wizard");
@@ -43,25 +54,48 @@ namespace Project.CustomEditor
                 EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space();
 
-            EditorGUILayout.BeginVertical("box");
-            GUILayout.Label("Visual Style", EditorStyles.boldLabel);
-            _cornerRadius = EditorGUILayout.Slider("Corner Radius", _cornerRadius, 0f, 32f);
-            _borderThickness = EditorGUILayout.Slider("Border Thickness", _borderThickness, 0f, 10f);
-            _borderColor = EditorGUILayout.ColorField("Border Color", _borderColor);
+            _mode = (WizardMode)GUILayout.Toolbar((int)_mode, new[] { "Generate New", "Use Existing Prefab" });
             EditorGUILayout.Space();
-            _panelFillTop = EditorGUILayout.ColorField("Panel Fill (Top)", _panelFillTop);
-            _panelFillBottom = EditorGUILayout.ColorField("Panel Fill (Bottom)", _panelFillBottom);
-            EditorGUILayout.Space();
-            _buttonFillTop = EditorGUILayout.ColorField("Button Fill (Top)", _buttonFillTop);
-            _buttonFillBottom = EditorGUILayout.ColorField("Button Fill (Bottom)", _buttonFillBottom);
-            EditorGUILayout.EndVertical();
+
+            if (_mode == WizardMode.UseExistingPrefab)
+            {
+                EditorGUILayout.HelpBox(
+                    "Drop in your own UI prefab and the wizard wires DialogueMenuUI automatically. Name " +
+                    "elements with these keywords:\n" +
+                    "\u2022 NPC name text: \"Name\"   \u2022 Leave button: \"Leave\"\n" +
+                    "\u2022 List root: \"List\"   \u2022 Options content: \"Content\"\n" +
+                    "\u2022 Option button template: \"Option\" (not \"Carousel\") \u2014 extracted as its own prefab\n" +
+                    "\u2022 Carousel root/group/button/label: contain \"Carousel\"   \u2022 Carousel index text: \"Index\"\n" +
+                    "\u2022 Rumor popup fader/text: \"Popup\"   \u2022 Popup close button: \"Close\"\n" +
+                    "\u2022 Portrait image: \"Portrait\" (image vs. video RawImage auto-distinguished by type)\n" +
+                    "\u2022 Video player: on the popup object   \u2022 Click AudioSource: \"Click\"",
+                    MessageType.Info);
+                _sourcePrefab = (GameObject)EditorGUILayout.ObjectField("Custom UI Prefab / GameObject", _sourcePrefab, typeof(GameObject), true);
+            }
+            else
+            {
+                EditorGUILayout.BeginVertical("box");
+                GUILayout.Label("Visual Style", EditorStyles.boldLabel);
+                _cornerRadius = EditorGUILayout.Slider("Corner Radius", _cornerRadius, 0f, 32f);
+                _borderThickness = EditorGUILayout.Slider("Border Thickness", _borderThickness, 0f, 10f);
+                _borderColor = EditorGUILayout.ColorField("Border Color", _borderColor);
+                EditorGUILayout.Space();
+                _panelFillTop = EditorGUILayout.ColorField("Panel Fill (Top)", _panelFillTop);
+                _panelFillBottom = EditorGUILayout.ColorField("Panel Fill (Bottom)", _panelFillBottom);
+                EditorGUILayout.Space();
+                _buttonFillTop = EditorGUILayout.ColorField("Button Fill (Top)", _buttonFillTop);
+                _buttonFillBottom = EditorGUILayout.ColorField("Button Fill (Bottom)", _buttonFillBottom);
+                EditorGUILayout.EndVertical();
+            }
 
             EditorGUILayout.Space();
 
             GUI.backgroundColor = Color.green;
-            if (GUILayout.Button("GENERATE DIALOGUE MENU UI", GUILayout.Height(40)))
+            string buttonLabel = _mode == WizardMode.GenerateNew ? "GENERATE DIALOGUE MENU UI" : "WIRE CUSTOM DIALOGUE MENU UI";
+            if (GUILayout.Button(buttonLabel, GUILayout.Height(40)))
             {
-                GenerateDialogueMenuUI();
+                if (_mode == WizardMode.GenerateNew) GenerateDialogueMenuUI();
+                else GenerateFromExistingPrefab();
             }
             GUI.backgroundColor = Color.white;
         }
@@ -71,7 +105,7 @@ namespace Project.CustomEditor
             EnsureFolderExists(OutputFolder);
             Canvas canvas = FindOrCreateCanvas();
 
-            // v14: Procedurally generated, saved as real Sprite assets so they stay crisp at
+            // Procedurally generated, saved as real Sprite assets so they stay crisp at
             // any size (9-sliced). Panel/popup share one style, buttons another, both using
             // the same corner radius/border for visual consistency.
             Sprite panelSprite = ProceduralUISprites.CreateRoundedRectSprite(
@@ -99,7 +133,7 @@ namespace Project.CustomEditor
             CanvasGroupFader panelFader = panelObj.AddComponent<CanvasGroupFader>();
             DialogueMenuUI menuUI = panelObj.AddComponent<DialogueMenuUI>();
 
-            // v13: Click sound source — 2D (non-spatial), since this is UI feedback, not a
+            // Click sound source — 2D (non-spatial), since this is UI feedback, not a
             // world-positioned sound.
             AudioSource clickAudioSource = panelObj.AddComponent<AudioSource>();
             clickAudioSource.playOnAwake = false;
@@ -261,7 +295,7 @@ namespace Project.CustomEditor
             leaveBg.type = Image.Type.Sliced;
             Button leaveButton = leaveObj.AddComponent<Button>();
 
-            // v14: AnimatedButtonFeedback overwrites Image.color with its own _normalColor at
+            // AnimatedButtonFeedback overwrites Image.color with its own _normalColor at
             // Awake() — set the reddish Leave tint THROUGH that field, not directly on the
             // Image, or it would be silently overwritten at runtime.
             AnimatedButtonFeedback leaveFeedback = leaveObj.AddComponent<AnimatedButtonFeedback>();
@@ -294,7 +328,7 @@ namespace Project.CustomEditor
             popupRect.anchorMin = new Vector2(0.5f, 0.5f);
             popupRect.anchorMax = new Vector2(0.5f, 0.5f);
             popupRect.pivot = new Vector2(0.5f, 0.5f);
-            popupRect.sizeDelta = new Vector2(440f, 220f); // v13: Widened to make room for the portrait square.
+            popupRect.sizeDelta = new Vector2(440f, 220f); // Widened to make room for the portrait square.
             popupRect.anchoredPosition = Vector2.zero;
 
             Image popupBg = popupObj.AddComponent<Image>();
@@ -306,7 +340,7 @@ namespace Project.CustomEditor
             VideoPlayer popupVideoPlayer = popupObj.AddComponent<VideoPlayer>();
             popupVideoPlayer.playOnAwake = false;
 
-            // v13: Portrait square (left side, fixed size regardless of popup size).
+            // Portrait square (left side, fixed size regardless of popup size).
             GameObject portraitObj = new GameObject("PortraitImage", typeof(RectTransform));
             portraitObj.transform.SetParent(popupObj.transform, false);
             Image portraitImage = portraitObj.AddComponent<Image>();
@@ -336,7 +370,7 @@ namespace Project.CustomEditor
             popupText.fontSize = 18;
             popupText.text = "...";
             RectTransform popupTextRect = popupTextObj.GetComponent<RectTransform>();
-            // v13: Shifted right to make room for the portrait square.
+            // Shifted right to make room for the portrait square.
             popupTextRect.anchorMin = new Vector2(0.40f, 0.08f);
             popupTextRect.anchorMax = new Vector2(0.94f, 0.92f);
             popupTextRect.offsetMin = Vector2.zero;
@@ -408,6 +442,71 @@ namespace Project.CustomEditor
                 "Success!",
                 $"Dialogue Menu UI generated and wired automatically (List mode by default — toggle 'Use Carousel Mode' on DialogueMenuUI to switch).\n\nOption button prefab saved to:\n{buttonPrefabPath}",
                 "Great");
+        }
+
+        /// <summary>
+        /// v18: Builds DialogueMenuUI on a developer-supplied custom prefab/GameObject instead
+        /// of generating one from scratch. Scans the hierarchy for each named sub-element (name
+        /// header, Leave button, list root, carousel pieces, rumor popup pieces, portrait,
+        /// audio) and wires them all onto DialogueMenuUI, extracting the option button template
+        /// as its own prefab asset the same way Generate New mode does. Reports exactly what it
+        /// could and couldn't find rather than failing silently on a naming mismatch. The root's
+        /// own CanvasGroup/CanvasGroupFader (added here if missing) becomes _panelFader — it
+        /// isn't a distinctly-named child, so it's wired directly rather than scanned for.
+        /// </summary>
+        private void GenerateFromExistingPrefab()
+        {
+            if (_sourcePrefab == null)
+            {
+                EditorUtility.DisplayDialog("No Prefab Assigned", "Assign a custom UI prefab or scene GameObject first.", "OK");
+                return;
+            }
+
+            bool isAsset = PrefabUtility.GetPrefabAssetType(_sourcePrefab) != PrefabAssetType.NotAPrefab && !_sourcePrefab.scene.IsValid();
+            GameObject rootInstance = isAsset ? (GameObject)PrefabUtility.InstantiatePrefab(_sourcePrefab) : _sourcePrefab;
+
+            if (isAsset)
+            {
+                Canvas canvas = FindOrCreateCanvas();
+                rootInstance.transform.SetParent(canvas.transform, false);
+                Undo.RegisterCreatedObjectUndo(rootInstance, "Instantiate Custom Dialogue Menu UI");
+            }
+
+            DialogueMenuUI menuUI = rootInstance.GetComponent<DialogueMenuUI>();
+            if (menuUI == null) menuUI = rootInstance.AddComponent<DialogueMenuUI>();
+            if (rootInstance.GetComponent<CanvasGroup>() == null) rootInstance.AddComponent<CanvasGroup>();
+            CanvasGroupFader rootFader = rootInstance.GetComponent<CanvasGroupFader>();
+            if (rootFader == null) rootFader = rootInstance.AddComponent<CanvasGroupFader>();
+
+            SerializedObject serializedMenu = new SerializedObject(menuUI);
+            serializedMenu.FindProperty("_panelFader").objectReferenceValue = rootFader;
+            serializedMenu.ApplyModifiedProperties();
+
+            var fields = new List<UIElementAutoWirer.FieldTarget>
+            {
+                new UIElementAutoWirer.FieldTarget("_npcNameText", typeof(TextMeshProUGUI), new[] { "name" }),
+                new UIElementAutoWirer.FieldTarget("_leaveButton", typeof(Button), new[] { "leave" }),
+                new UIElementAutoWirer.FieldTarget("_listModeRoot", typeof(GameObject), new[] { "list" }),
+                new UIElementAutoWirer.FieldTarget("_optionsContainer", typeof(RectTransform), new[] { "content" }),
+                new UIElementAutoWirer.FieldTarget("_optionButtonPrefab", typeof(Button), new[] { "option" }, extractAsPrefab: true) { ExcludeHints = new[] { "carousel" } },
+                new UIElementAutoWirer.FieldTarget("_carouselModeRoot", typeof(GameObject), new[] { "carousel" }),
+                new UIElementAutoWirer.FieldTarget("_carouselOptionGroup", typeof(CanvasGroup), new[] { "carousel" }),
+                new UIElementAutoWirer.FieldTarget("_carouselOptionButton", typeof(Button), new[] { "carousel", "option" }),
+                new UIElementAutoWirer.FieldTarget("_carouselOptionLabel", typeof(TextMeshProUGUI), new[] { "carousel", "label" }),
+                new UIElementAutoWirer.FieldTarget("_carouselIndexText", typeof(TextMeshProUGUI), new[] { "index" }),
+                new UIElementAutoWirer.FieldTarget("_rumorPopupFader", typeof(CanvasGroupFader), new[] { "popup" }),
+                new UIElementAutoWirer.FieldTarget("_rumorPopupText", typeof(TextMeshProUGUI), new[] { "popup" }) { ExcludeHints = new[] { "close" } },
+                new UIElementAutoWirer.FieldTarget("_rumorPopupCloseButton", typeof(Button), new[] { "close" }),
+                new UIElementAutoWirer.FieldTarget("_popupPortraitImage", typeof(Image), new[] { "portrait" }) { ExcludeHints = new[] { "video" } },
+                new UIElementAutoWirer.FieldTarget("_popupPortraitVideoImage", typeof(RawImage), new[] { "portrait" }),
+                new UIElementAutoWirer.FieldTarget("_popupVideoPlayer", typeof(VideoPlayer), new[] { "popup" }),
+                new UIElementAutoWirer.FieldTarget("_clickAudioSource", typeof(AudioSource), new[] { "click" }),
+            };
+
+            UIElementAutoWirer.Result result = UIElementAutoWirer.AutoWire(rootInstance, menuUI, fields, OutputFolder);
+
+            Selection.activeGameObject = rootInstance;
+            EditorUtility.DisplayDialog("Custom Prefab Wired", UIElementAutoWirer.BuildSummaryMessage(result, fields.Count + 1), "Great");
         }
 
         private static Canvas FindOrCreateCanvas()

@@ -1,9 +1,10 @@
 ﻿using UnityEngine;
 using VContainer;
-using Project.Services;
-using Project.Data;
+using TownsPeople.Services;
+using TownsPeople.Data;
 
-namespace Project.GamePlay
+
+namespace TownsPeople.GamePlay
 {
     /// <summary>
     /// Represents this specific NPC's personal, temporary opinion of the player — layered on

@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-namespace Project.UI
+namespace TownsPeople.UI
 {
     // NOTE: This component manages the screenspace overlay panel for transactions.
     // It is automatically instantiated and auto-wired by the Creator Wizard Window.

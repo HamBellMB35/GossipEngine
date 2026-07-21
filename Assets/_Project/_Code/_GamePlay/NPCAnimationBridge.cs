@@ -1,11 +1,11 @@
 using System.Collections.Generic;
 using UnityEngine;
 using VContainer;
-using Project.Services;
-using Project.Data;
+using TownsPeople.Services;
+using TownsPeople.Data;
 using System.Collections;
 
-namespace Project.GamePlay
+namespace TownsPeople.GamePlay
 {
     /// <summary>
     /// NPCAnimationBridge: Manages animation states with Inspector-editable timing.

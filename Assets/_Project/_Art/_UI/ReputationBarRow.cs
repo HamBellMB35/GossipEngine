@@ -2,9 +2,9 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using Project.Services;
+using TownsPeople.Services;
 
-namespace Project.UI
+namespace TownsPeople.UI
 {
     /// <summary>
     /// A single reputation bar: a fillable Image plus a label and a centered value readout.

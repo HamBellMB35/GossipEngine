@@ -4,9 +4,9 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using Project.Data;
+using TownsPeople.Data;
 
-namespace Project.EditorTools
+namespace TownsPeople.EditorTools
 {
     /// <summary>
     /// Editor-only drawer for [AnimatorStateName]. Must live in an Editor folder/assembly

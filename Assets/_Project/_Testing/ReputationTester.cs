@@ -1,10 +1,10 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using VContainer;
-using Project.Services;
-using Project.GamePlay;
+using TownsPeople.Services;
+using TownsPeople.GamePlay;
 
-namespace Project.Testing
+namespace TownsPeople.Testing
 {
     /// <summary>
     /// Manual test harness for the Reputation System, since the real "player deed -> NPC

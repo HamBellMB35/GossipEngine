@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Project.UI
+namespace TownsPeople.UI
 {
     /// <summary>
     /// Rotates this transform to face the active camera every frame. Intended for world-space

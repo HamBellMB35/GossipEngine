@@ -1,4 +1,4 @@
-namespace Project.Data
+namespace TownsPeople.Data
 {
     /// <summary>
     /// Named bands of a reputation score, used by consequence systems (vendor pricing,

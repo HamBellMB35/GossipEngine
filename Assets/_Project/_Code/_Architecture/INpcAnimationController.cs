@@ -1,6 +1,6 @@
-using Project.Data;
+using TownsPeople.Data;
 
-namespace Project.Architecture
+namespace TownsPeople.Architecture
 {
     /// <summary>
     /// Updated professional contract. We now pass pure data (GossipToneData) 

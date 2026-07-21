@@ -1,4 +1,4 @@
-namespace Project.Architecture
+namespace TownsPeople.Architecture
 {
     // NOTE: This interface acts as a strict professional contract.
     // Any class that handles gossip logic must follow this layout.
@@ -8,7 +8,7 @@ namespace Project.Architecture
         void Initialize();
 
         // Standardized signature to transfer data records between two distinct simulation points
-        void PropagateRumor(Project.Data.RumorTemplate rumor, string sourceNpcId, string targetNpcId);
+        void PropagateRumor(TownsPeople.Data.RumorTemplate rumor, string sourceNpcId, string targetNpcId);
 
         // v2: Added — runs one full tick-based propagation pass across every NPC currently
         // in the scene. Distance-agnostic by design (proximity only matters at the witness

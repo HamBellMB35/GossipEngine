@@ -1,11 +1,12 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using VContainer;
-using Project.Services;
-using Project.GamePlay;
-using Project.Data;
+using TownsPeople.Services;
+using TownsPeople.GamePlay;
+using TownsPeople.Data;
 
-namespace Project.Testing
+
+namespace TownsPeople.Testing
 {
     // v3: G now calls LearnRumor (not LearnAndPresentRumor). Pressing G simulates "this NPC
     // has just learned about this rumor" and nothing more — actual presentation is now driven

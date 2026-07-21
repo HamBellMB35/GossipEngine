@@ -1,7 +1,7 @@
 using System.Collections;
 using UnityEngine;
 
-namespace Project.UI
+namespace TownsPeople.UI
 {
     /// <summary>
     /// Reusable fade controller for any CanvasGroup. Handles interrupting an in-progress fade

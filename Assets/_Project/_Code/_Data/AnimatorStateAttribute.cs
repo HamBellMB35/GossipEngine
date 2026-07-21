@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Project.Data
+namespace TownsPeople.Data
 {
     /// <summary>
     /// Draws a string field (or each element of a string list/array) as a dropdown of real

@@ -1,4 +1,4 @@
-namespace Project.GamePlay
+namespace TownsPeople.GamePlay
 {
     /// <summary>
     /// Foundational extension contract interface. Any premium add-on component (Vendors, Quest Givers) 

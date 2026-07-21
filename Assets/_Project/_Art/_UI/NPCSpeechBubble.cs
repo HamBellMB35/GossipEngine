@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-namespace Project.UI
+namespace TownsPeople.UI
 {
     // NOTE: This updated class provides absolute direct editor slider adjustments
     // for fade transitions. It completely eliminates frame latency by resetting 

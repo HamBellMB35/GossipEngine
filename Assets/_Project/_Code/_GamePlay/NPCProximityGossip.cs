@@ -1,10 +1,10 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using Project.Data;
-using Project.UI;
+using TownsPeople.Data;
+using TownsPeople.UI;
 
-namespace Project.GamePlay
+namespace TownsPeople.GamePlay
 {
     // v6: The [E] prompt now fades in/out via CanvasGroupFader instead of snapping alpha
     // instantly — matching NPCSpeechBubble's existing fade behavior. Fade durations are
@@ -13,8 +13,8 @@ namespace Project.GamePlay
     public class NPCProximityGossip : MonoBehaviour
     {
         [Header("Dependency Mappings")]
-        [SerializeField] private Project.Data.NPCArchetypeConfiguration archetypeConfig;
-        [SerializeField] private Project.UI.NPCSpeechBubble speechBubble;
+        [SerializeField] private TownsPeople.Data.NPCArchetypeConfiguration archetypeConfig;
+        [SerializeField] private TownsPeople.UI.NPCSpeechBubble speechBubble;
         [SerializeField] private CanvasGroupFader interactionPromptFader;
 
         [Header("Gossip Timing Configurations")]
@@ -36,7 +36,7 @@ namespace Project.GamePlay
         private NPCAnimationBridge _animationBridge;
         private NPCGreetingResponder _greetingResponder;
         private NPCReputationOpinion _reputationOpinion;
-        private Project.UI.NPCNameplate _nameplate;
+        private TownsPeople.UI.NPCNameplate _nameplate;
         private AudioSource _audioSource;
 
         private void Awake()
@@ -46,7 +46,7 @@ namespace Project.GamePlay
             _animationBridge = GetComponent<NPCAnimationBridge>();
             _greetingResponder = GetComponent<NPCGreetingResponder>();
             _reputationOpinion = GetComponent<NPCReputationOpinion>();
-            _nameplate = GetComponent<Project.UI.NPCNameplate>();
+            _nameplate = GetComponent<TownsPeople.UI.NPCNameplate>();
             _audioSource = GetComponent<AudioSource>();
         }
 
@@ -156,7 +156,7 @@ namespace Project.GamePlay
             // v11: Click sound for [E] press itself — covers every interaction path
             // uniformly (vendor hijack, dialogue menu opening, greeting responder, old
             // fallback). No-ops silently if no click sound is assigned.
-            Project.UI.DialogueMenuUI.Instance?.PlayClickSound();
+            TownsPeople.UI.DialogueMenuUI.Instance?.PlayClickSound();
 
             interactionPromptFader?.Hide();
 

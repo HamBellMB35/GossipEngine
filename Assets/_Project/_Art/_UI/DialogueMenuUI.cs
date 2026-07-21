@@ -6,10 +6,11 @@ using UnityEngine.UI;
 using UnityEngine.InputSystem;
 using UnityEngine.Video;
 using TMPro;
-using Project.GamePlay;
-using Project.Data;
+using TownsPeople.GamePlay;
+using TownsPeople.Data;
 
-namespace Project.UI
+
+namespace TownsPeople.UI
 {
     /// <summary>
     /// Shared, single dialogue menu UI — one instance in the scene, opened and repopulated for
@@ -508,12 +509,14 @@ namespace Project.UI
 
             ApplyPopupPortrait();
 
+            // v25: Fade out the main panel while the popup takes focus.
+            _panelFader?.Hide();
             _rumorPopupFader?.Show();
             _isRumorPopupOpen = true;
         }
 
         /// <summary>
-        /// v13: Shows the current NPC's static portrait or video (video takes priority if
+        /// Shows the current NPC's static portrait or video (video takes priority if
         /// assigned), hiding whichever isn't in use.
         /// </summary>
         private void ApplyPopupPortrait()
@@ -539,7 +542,13 @@ namespace Project.UI
             }
         }
 
-        /// <summary>Silent — called both by the deliberate-click path and programmatically when the player walks away.</summary>
+        /// <summary>
+        /// Silent — called both by the deliberate-click path (via OnPopupCloseClicked, below)
+        /// and programmatically from Close() when the player walks away/clicks Leave.
+        /// Deliberately does NOT restore the main panel's fade — Close() is already closing
+        /// everything at that point, and re-showing the panel here would make it flash
+        /// visible right before the whole menu disappears.
+        /// </summary>
         private void CloseRumorPopup()
         {
             _rumorPopupFader?.Hide();
@@ -547,13 +556,20 @@ namespace Project.UI
             _isRumorPopupOpen = false;
         }
 
-        /// <summary>Called when the popup's [X] is clicked, or Escape is pressed — plays the click sound only if the popup was actually open.</summary>
+        /// <summary>
+        /// Called when the popup's [X] is clicked, or Escape is pressed — plays the click
+        /// sound and fades the main panel back in, only if the popup was actually open.
+        /// </summary>
         private void OnPopupCloseClicked()
         {
             if (!_isRumorPopupOpen) return;
 
             PlayClickSound();
             CloseRumorPopup();
+
+            // v25: Restore the main panel — deliberately only here (not inside
+            // CloseRumorPopup itself), since the player is still mid-conversation at this point.
+            _panelFader?.Show();
         }
 
         /// <summary>Re-reads option data after a selection (e.g. cooldown/read state may have changed) without a crossfade.</summary>

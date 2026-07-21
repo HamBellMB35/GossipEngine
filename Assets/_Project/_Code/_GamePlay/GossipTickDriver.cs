@@ -1,8 +1,8 @@
 using UnityEngine;
 using VContainer;
-using Project.Architecture;
+using TownsPeople.Architecture;
 
-namespace Project.GamePlay
+namespace TownsPeople.GamePlay
 {
     /// <summary>
     /// Drives the tick-based half of the Gossip Propagation Engine. CoreGossipEngine is

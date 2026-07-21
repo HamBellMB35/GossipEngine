@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-namespace Project.UI
+namespace TownsPeople.UI
 {
     /// <summary>
     /// Smooth hover/press feedback for a UI button: tints and scales the button's Image over a

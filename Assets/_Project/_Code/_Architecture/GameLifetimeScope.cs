@@ -1,10 +1,11 @@
 using VContainer;
 using VContainer.Unity;
 using UnityEngine;
-using Project.Architecture;
-using Project.GamePlay;
-using Project.Services;
-using Project.Testing;
+using TownsPeople.Architecture;
+using TownsPeople.GamePlay;
+using TownsPeople.Services;
+using TownsPeople.Testing;
+
 
 
 /// <summary>
@@ -69,7 +70,7 @@ public class GameLifetimeScope : LifetimeScope
             InjectAllInstancesOf<GossipTester>();
             InjectAllInstancesOf<ReputationTester>();
             InjectAllInstancesOf<DeedTester>();
-            InjectAllInstancesOf<Project.UI.ReputationBarUI>();
+            InjectAllInstancesOf<TownsPeople.UI.ReputationBarUI>();
 
             Debug.Log("<color=yellow>[Bootstrapper]</color> Entry point achieved. Waking engines...");
             Debug.Log("<color=magenta>[Game Bootstrapper]</color> Game initialization complete. All systems are online.");

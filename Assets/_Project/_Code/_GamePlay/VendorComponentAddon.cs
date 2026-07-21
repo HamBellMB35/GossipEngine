@@ -1,7 +1,7 @@
 using UnityEngine;
-using Project.Data;
+using TownsPeople.Data;
 
-namespace Project.GamePlay
+namespace TownsPeople.GamePlay
 {
     // NOTE: This component serves as a mock simulation blueprint for your premium Asset Store Vendor Addon Pack.
     // By inheriting from 'IInteractionExtension', it hooks directly into the core NPC Creator pipeline.
@@ -13,7 +13,7 @@ namespace Project.GamePlay
     // v2: Implements INpcAddon (so NpcAddonRegistry can discover it generically) and
     // IInteractionExtension.InteractionPriority (defaults to 0 — Quest Giver add-ons, when built,
     // are recommended to use a higher priority so quests take precedence over shopping by default).
-    public class VendorComponentAddon : MonoBehaviour, IInteractionExtension, INPCAddon
+    public class VendorComponentAddon : MonoBehaviour, IInteractionExtension, INpcAddon
     {
         [Header("Vendor Shop Properties")]
         public string ShopName = "General Store";
@@ -48,7 +48,7 @@ namespace Project.GamePlay
             }
             Debug.Log("<color=yellow>--------------------------------------</color>");
 
-            // HOOK POINT: Trigger premium shop canvas UI windows or screen inventory overlays here later!
+            // HOOK POINT: Trigger your premium shop canvas UI windows or screen inventory overlays here later!
 
             // Return TRUE to signal the core proximity script that we have fully processed the event 
             // and that it should completely block all standard scripted dialogue streams.

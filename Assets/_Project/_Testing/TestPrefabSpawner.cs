@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Project.Testing
+namespace TownsPeople.Testing
 {
     /// <summary>
     /// Quick test utility: spawns copies of a player-provided prefab in a row extending to
