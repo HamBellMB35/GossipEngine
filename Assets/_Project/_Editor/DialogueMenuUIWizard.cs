@@ -21,9 +21,27 @@ namespace TownsPeople.CustomEditor
     /// type, wiring DialogueMenuUI automatically instead of generating UI from scratch.
     /// </summary>
     // v18: Added "Use Existing Prefab" mode — see UIElementAutoWirer.
+    // v19: Generate New no longer uses a VerticalLayoutGroup on the panel root or the carousel
+    // slot — every generated child's position/size is baked once and freely editable afterward.
+    // v20: Larger, readable info text in the "Use Existing Prefab" section; Custom UI Prefab /
+    // GameObject label now on its own line above the picker.
+    // v21: FIX — buttonSprite's CreateRoundedRectSprite call was missing _borderColor (CS7036),
+    // introduced back in v18 and unnoticed since it only affects the Option/Leave/Close button
+    // sprite, not the panel sprite. Restored as the 5th argument.
     public class DialogueMenuUIWizard : EditorWindow
     {
         private const string OutputFolder = "Assets/NPC Creator/Generated UI";
+
+        // Baked layout constants — replace what panelLayout's padding/spacing and each child's
+        // LayoutElement used to express. Same visual result as before, just computed once
+        // instead of every layout pass.
+        private const float PanelPadding = 16f;
+        private const float PanelSpacing = 10f;
+        private const float NameHeight = 32f;
+        private const float LeaveHeight = 36f;
+        private const float CarouselButtonHeight = 60f;
+        private const float CarouselIndexHeight = 20f;
+        private const float CarouselSpacing = 8f;
 
         private enum WizardMode { GenerateNew, UseExistingPrefab }
         private WizardMode _mode = WizardMode.GenerateNew;
@@ -50,7 +68,7 @@ namespace TownsPeople.CustomEditor
         {
             GUILayout.Label("Dialogue Menu UI Generator", EditorStyles.boldLabel);
             EditorGUILayout.LabelField(
-                "Builds the shared dialogue menu panel (NPC name header, options area, Leave button) and wires DialogueMenuUI automatically. Only one is needed for the whole game. Toggle List vs Carousel display mode afterward on the generated DialogueMenuUI component.",
+                "Builds the shared dialogue menu panel (NPC name header, options area, Leave button) and wires DialogueMenuUI automatically. Only one is needed for the whole game. Toggle List vs Carousel display mode afterward on the generated DialogueMenuUI component. Every generated element's position/size is freely editable afterward in the Inspector or Scene view — nothing re-locks it into place.",
                 EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space();
 
@@ -59,18 +77,20 @@ namespace TownsPeople.CustomEditor
 
             if (_mode == WizardMode.UseExistingPrefab)
             {
-                EditorGUILayout.HelpBox(
+                DrawLargeInfoBox(
                     "Drop in your own UI prefab and the wizard wires DialogueMenuUI automatically. Name " +
-                    "elements with these keywords:\n" +
+                    "elements with these keywords:\n\n" +
                     "\u2022 NPC name text: \"Name\"   \u2022 Leave button: \"Leave\"\n" +
                     "\u2022 List root: \"List\"   \u2022 Options content: \"Content\"\n" +
                     "\u2022 Option button template: \"Option\" (not \"Carousel\") \u2014 extracted as its own prefab\n" +
                     "\u2022 Carousel root/group/button/label: contain \"Carousel\"   \u2022 Carousel index text: \"Index\"\n" +
                     "\u2022 Rumor popup fader/text: \"Popup\"   \u2022 Popup close button: \"Close\"\n" +
                     "\u2022 Portrait image: \"Portrait\" (image vs. video RawImage auto-distinguished by type)\n" +
-                    "\u2022 Video player: on the popup object   \u2022 Click AudioSource: \"Click\"",
-                    MessageType.Info);
-                _sourcePrefab = (GameObject)EditorGUILayout.ObjectField("Custom UI Prefab / GameObject", _sourcePrefab, typeof(GameObject), true);
+                    "\u2022 Video player: on the popup object   \u2022 Click AudioSource: \"Click\"");
+
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Custom UI Prefab / GameObject", EditorStyles.boldLabel);
+                _sourcePrefab = (GameObject)EditorGUILayout.ObjectField(_sourcePrefab, typeof(GameObject), true);
             }
             else
             {
@@ -100,6 +120,23 @@ namespace TownsPeople.CustomEditor
             GUI.backgroundColor = Color.white;
         }
 
+        /// <summary>
+        /// Draws an info box matching the look of the "box" style already used elsewhere in
+        /// this window (Visual Style), but with a larger, more readable fontSize than
+        /// EditorGUILayout.HelpBox allows (HelpBox has no font-size override).
+        /// </summary>
+        private static void DrawLargeInfoBox(string message)
+        {
+            EditorGUILayout.BeginVertical("box");
+            GUIStyle labelStyle = new GUIStyle(EditorStyles.label)
+            {
+                fontSize = 13,
+                wordWrap = true
+            };
+            EditorGUILayout.LabelField(message, labelStyle);
+            EditorGUILayout.EndVertical();
+        }
+
         private void GenerateDialogueMenuUI()
         {
             EnsureFolderExists(OutputFolder);
@@ -110,6 +147,8 @@ namespace TownsPeople.CustomEditor
             // the same corner radius/border for visual consistency.
             Sprite panelSprite = ProceduralUISprites.CreateRoundedRectSprite(
                 $"{OutputFolder}/PanelBackground.png", 128, _cornerRadius, _borderThickness, _borderColor, _panelFillTop, _panelFillBottom);
+
+            // v21 FIX: _borderColor was missing here (CS7036) — restored as the 5th argument.
             Sprite buttonSprite = ProceduralUISprites.CreateRoundedRectSprite(
                 $"{OutputFolder}/ButtonBackground.png", 64, _cornerRadius * 0.6f, _borderThickness, _borderColor, _buttonFillTop, _buttonFillBottom);
 
@@ -139,34 +178,38 @@ namespace TownsPeople.CustomEditor
             clickAudioSource.playOnAwake = false;
             clickAudioSource.spatialBlend = 0f;
 
-            VerticalLayoutGroup panelLayout = panelObj.AddComponent<VerticalLayoutGroup>();
-            panelLayout.padding = new RectOffset(16, 16, 16, 16);
-            panelLayout.spacing = 10f;
-            panelLayout.childControlHeight = true; // Required for preferredHeight/flexibleHeight below to have any effect.
-            panelLayout.childControlWidth = true;
-            panelLayout.childForceExpandWidth = true;
-            panelLayout.childForceExpandHeight = false;
+            // No VerticalLayoutGroup here — each direct child below gets its RectTransform set
+            // explicitly instead, so everything stays freely editable afterward.
 
             // --- NPC name header ---
+            // Top-stretch, fixed height, offset down by PanelPadding from the panel's top edge.
             GameObject nameObj = new GameObject("NpcNameText", typeof(RectTransform));
             nameObj.transform.SetParent(panelObj.transform, false);
+            RectTransform nameRect = nameObj.GetComponent<RectTransform>();
+            nameRect.anchorMin = new Vector2(0f, 1f);
+            nameRect.anchorMax = new Vector2(1f, 1f);
+            nameRect.pivot = new Vector2(0.5f, 1f);
+            nameRect.anchoredPosition = new Vector2(0f, -PanelPadding);
+            nameRect.sizeDelta = new Vector2(-PanelPadding * 2f, NameHeight);
+
             TextMeshProUGUI nameText = nameObj.AddComponent<TextMeshProUGUI>();
             nameText.text = "NPC Name";
             nameText.fontSize = 22;
             nameText.fontStyle = FontStyles.Bold;
             nameText.alignment = TextAlignmentOptions.Center;
-            LayoutElement nameLayoutElement = nameObj.AddComponent<LayoutElement>();
-            nameLayoutElement.preferredHeight = 32f;
 
             // --- Flexible middle region: houses EITHER the list OR the carousel slot, both
-            // full-stretched inside it. flexibleHeight makes this absorb all leftover space,
-            // which is what actually centers the options area and pins Leave to the bottom
-            // regardless of panel size. ---
+            // full-stretched inside it. Fills the space between the name header and the Leave
+            // button via a computed stretch inset (Left/Top/Right/Bottom in the Inspector). ---
             GameObject middleContainer = new GameObject("MiddleContainer", typeof(RectTransform));
             middleContainer.transform.SetParent(panelObj.transform, false);
-            LayoutElement middleLayoutElement = middleContainer.AddComponent<LayoutElement>();
-            middleLayoutElement.minHeight = 200f;
-            middleLayoutElement.flexibleHeight = 1f;
+            RectTransform middleRect = middleContainer.GetComponent<RectTransform>();
+            middleRect.anchorMin = Vector2.zero;
+            middleRect.anchorMax = Vector2.one;
+            float middleTopOffset = PanelPadding + NameHeight + PanelSpacing;
+            float middleBottomOffset = PanelPadding + LeaveHeight + PanelSpacing;
+            middleRect.offsetMin = new Vector2(PanelPadding, middleBottomOffset);
+            middleRect.offsetMax = new Vector2(-PanelPadding, -middleTopOffset);
 
             // ===== List mode UI =====
             GameObject scrollObj = new GameObject("OptionsScrollView", typeof(RectTransform));
@@ -193,6 +236,9 @@ namespace TownsPeople.CustomEditor
             contentRect.anchorMax = new Vector2(1f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
 
+            // Deliberately KEPT: this VerticalLayoutGroup stacks a variable, runtime-
+            // instantiated number of dialogue option buttons, so it genuinely needs to stay
+            // automatic.
             VerticalLayoutGroup contentLayout = contentObj.AddComponent<VerticalLayoutGroup>();
             contentLayout.spacing = 6f;
             contentLayout.childControlHeight = false;
@@ -241,18 +287,20 @@ namespace TownsPeople.CustomEditor
             carouselFullRect.offsetMin = Vector2.zero;
             carouselFullRect.offsetMax = Vector2.zero;
 
-            VerticalLayoutGroup carouselLayout = carouselObj.AddComponent<VerticalLayoutGroup>();
-            carouselLayout.childAlignment = TextAnchor.MiddleCenter;
-            carouselLayout.spacing = 8f;
-            carouselLayout.childControlHeight = false;
-            carouselLayout.childControlWidth = true;
-            carouselLayout.childForceExpandWidth = true;
-            carouselLayout.childForceExpandHeight = false;
+            // No VerticalLayoutGroup here either — the button + spacing + index text block is
+            // centered exactly as the old MiddleCenter-aligned layout group produced it, but
+            // baked into fixed anchored positions on each child.
+            float carouselBlockHeight = CarouselButtonHeight + CarouselSpacing + CarouselIndexHeight;
 
             GameObject carouselButtonObj = new GameObject("CarouselOptionButton", typeof(RectTransform));
             carouselButtonObj.transform.SetParent(carouselObj.transform, false);
             RectTransform carouselButtonRect = carouselButtonObj.GetComponent<RectTransform>();
-            carouselButtonRect.sizeDelta = new Vector2(0f, 60f);
+            carouselButtonRect.anchorMin = new Vector2(0f, 0.5f);
+            carouselButtonRect.anchorMax = new Vector2(1f, 0.5f);
+            carouselButtonRect.pivot = new Vector2(0.5f, 0.5f);
+            carouselButtonRect.sizeDelta = new Vector2(0f, CarouselButtonHeight);
+            carouselButtonRect.anchoredPosition = new Vector2(0f, carouselBlockHeight / 2f - CarouselButtonHeight / 2f);
+
             Image carouselButtonBg = carouselButtonObj.AddComponent<Image>();
             carouselButtonBg.sprite = buttonSprite;
             carouselButtonBg.type = Image.Type.Sliced;
@@ -260,8 +308,6 @@ namespace TownsPeople.CustomEditor
             CanvasGroup carouselCanvasGroup = carouselButtonObj.AddComponent<CanvasGroup>();
             Button carouselButton = carouselButtonObj.AddComponent<Button>();
             carouselButtonObj.AddComponent<AnimatedButtonFeedback>();
-            LayoutElement carouselButtonLayoutElement = carouselButtonObj.AddComponent<LayoutElement>();
-            carouselButtonLayoutElement.preferredHeight = 60f;
 
             GameObject carouselLabelObj = new GameObject("Label", typeof(RectTransform));
             carouselLabelObj.transform.SetParent(carouselButtonObj.transform, false);
@@ -277,19 +323,32 @@ namespace TownsPeople.CustomEditor
 
             GameObject carouselIndexObj = new GameObject("CarouselIndexText", typeof(RectTransform));
             carouselIndexObj.transform.SetParent(carouselObj.transform, false);
+            RectTransform carouselIndexRect = carouselIndexObj.GetComponent<RectTransform>();
+            carouselIndexRect.anchorMin = new Vector2(0f, 0.5f);
+            carouselIndexRect.anchorMax = new Vector2(1f, 0.5f);
+            carouselIndexRect.pivot = new Vector2(0.5f, 0.5f);
+            carouselIndexRect.sizeDelta = new Vector2(0f, CarouselIndexHeight);
+            carouselIndexRect.anchoredPosition = new Vector2(0f, carouselBlockHeight / 2f - CarouselButtonHeight - CarouselSpacing - CarouselIndexHeight / 2f);
+
             TextMeshProUGUI carouselIndexText = carouselIndexObj.AddComponent<TextMeshProUGUI>();
             carouselIndexText.text = "1 / 1";
             carouselIndexText.alignment = TextAlignmentOptions.Center;
             carouselIndexText.fontSize = 14;
             carouselIndexText.color = new Color(1f, 1f, 1f, 0.6f);
-            LayoutElement carouselIndexLayoutElement = carouselIndexObj.AddComponent<LayoutElement>();
-            carouselIndexLayoutElement.preferredHeight = 20f;
 
             carouselObj.SetActive(false); // List mode is the default — DialogueMenuUI.Awake() also enforces this based on _useCarouselMode.
 
             // --- Leave button ---
+            // Bottom-stretch, fixed height, offset up by PanelPadding from the panel's bottom edge.
             GameObject leaveObj = new GameObject("LeaveButton", typeof(RectTransform));
             leaveObj.transform.SetParent(panelObj.transform, false);
+            RectTransform leaveRect = leaveObj.GetComponent<RectTransform>();
+            leaveRect.anchorMin = new Vector2(0f, 0f);
+            leaveRect.anchorMax = new Vector2(1f, 0f);
+            leaveRect.pivot = new Vector2(0.5f, 0f);
+            leaveRect.anchoredPosition = new Vector2(0f, PanelPadding);
+            leaveRect.sizeDelta = new Vector2(-PanelPadding * 2f, LeaveHeight);
+
             Image leaveBg = leaveObj.AddComponent<Image>();
             leaveBg.sprite = buttonSprite;
             leaveBg.type = Image.Type.Sliced;
@@ -304,8 +363,6 @@ namespace TownsPeople.CustomEditor
             serializedLeaveFeedback.FindProperty("_hoverColor").colorValue = new Color(1.5f, 0.85f, 0.85f, 1f);
             serializedLeaveFeedback.FindProperty("_pressedColor").colorValue = new Color(1.1f, 0.6f, 0.6f, 1f);
             serializedLeaveFeedback.ApplyModifiedProperties();
-            LayoutElement leaveLayoutElement = leaveObj.AddComponent<LayoutElement>();
-            leaveLayoutElement.preferredHeight = 36f;
 
             GameObject leaveLabelObj = new GameObject("Label", typeof(RectTransform));
             leaveLabelObj.transform.SetParent(leaveObj.transform, false);
@@ -321,7 +378,8 @@ namespace TownsPeople.CustomEditor
 
             // --- Rumor popup — a sibling of the main panel (same Canvas), so it visually
             // overlays it. Sized/positioned to sit centered on top, with a portrait square on
-            // the left and an [X] close button.
+            // the left and an [X] close button. Already freely editable — never was under a
+            // LayoutGroup.
             GameObject popupObj = new GameObject("RumorPopupPanel", typeof(RectTransform));
             popupObj.transform.SetParent(canvas.transform, false);
             RectTransform popupRect = popupObj.GetComponent<RectTransform>();
@@ -440,13 +498,13 @@ namespace TownsPeople.CustomEditor
 
             EditorUtility.DisplayDialog(
                 "Success!",
-                $"Dialogue Menu UI generated and wired automatically (List mode by default — toggle 'Use Carousel Mode' on DialogueMenuUI to switch).\n\nOption button prefab saved to:\n{buttonPrefabPath}",
+                $"Dialogue Menu UI generated and wired automatically (List mode by default — toggle 'Use Carousel Mode' on DialogueMenuUI to switch).\n\nEvery panel element's position and size is freely editable afterward — drag in Scene view or edit the RectTransform in the Inspector.\n\nOption button prefab saved to:\n{buttonPrefabPath}",
                 "Great");
         }
 
         /// <summary>
-        /// v18: Builds DialogueMenuUI on a developer-supplied custom prefab/GameObject instead
-        /// of generating one from scratch. Scans the hierarchy for each named sub-element (name
+        /// Builds DialogueMenuUI on a developer-supplied custom prefab/GameObject instead of
+        /// generating one from scratch. Scans the hierarchy for each named sub-element (name
         /// header, Leave button, list root, carousel pieces, rumor popup pieces, portrait,
         /// audio) and wires them all onto DialogueMenuUI, extracting the option button template
         /// as its own prefab asset the same way Generate New mode does. Reports exactly what it

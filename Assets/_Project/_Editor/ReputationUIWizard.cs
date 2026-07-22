@@ -26,6 +26,10 @@ namespace TownsPeople.CustomEditor
     // share the SAME generated sprite asset (one CreateRoundedRectSprite call, reused for
     // both), guaranteeing they're visually identical by construction rather than just similar.
     // v9: Added "Use Existing Prefab" mode — see UIElementAutoWirer.
+    // v10: Larger, readable info text in the "Use Existing Prefab" section (HelpBox has no
+    // font-size override, so it's now a custom box via DrawLargeInfoBox). The Custom UI Prefab
+    // / GameObject field's label now sits on its own line above the picker instead of beside
+    // it, so the label text no longer gets cut off in a narrower window.
     public class ReputationUIWizard : EditorWindow
     {
         private const string OutputFolder = "Assets/NPC Creator/Generated UI";
@@ -66,17 +70,19 @@ namespace TownsPeople.CustomEditor
 
             if (_mode == WizardMode.UseExistingPrefab)
             {
-                EditorGUILayout.HelpBox(
+                DrawLargeInfoBox(
                     "Drop in your own UI prefab (or a scene GameObject) and the wizard scans it for a " +
                     "matching Image/Text setup, wiring ReputationBarUI automatically. Name your elements " +
-                    "with these keywords for the best match rate:\n" +
+                    "with these keywords for the best match rate:\n\n" +
                     "\u2022 General bar row: contains \"General\"\n" +
                     "\u2022 Faction bar template row: contains \"Faction\" (extracted as its own prefab)\n" +
                     "\u2022 Faction rows container: contains \"Container\"\n" +
                     "\u2022 Each row's fill Image: contains \"Fill\" or \"Bar\"\n" +
-                    "\u2022 Each row's label/value text: contain \"Label\" / \"Value\" respectively",
-                    MessageType.Info);
-                _sourcePrefab = (GameObject)EditorGUILayout.ObjectField("Custom UI Prefab / GameObject", _sourcePrefab, typeof(GameObject), true);
+                    "\u2022 Each row's label/value text: contain \"Label\" / \"Value\" respectively");
+
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Custom UI Prefab / GameObject", EditorStyles.boldLabel);
+                _sourcePrefab = (GameObject)EditorGUILayout.ObjectField(_sourcePrefab, typeof(GameObject), true);
             }
             else
             {
@@ -111,6 +117,23 @@ namespace TownsPeople.CustomEditor
                 else GenerateFromExistingPrefab();
             }
             GUI.backgroundColor = Color.white;
+        }
+
+        /// <summary>
+        /// v10: Draws an info box matching the look of the "box" style already used elsewhere
+        /// in this window (Bar Dimensions, Visual Style), but with a larger, more readable
+        /// fontSize than EditorGUILayout.HelpBox allows (HelpBox has no font-size override).
+        /// </summary>
+        private static void DrawLargeInfoBox(string message)
+        {
+            EditorGUILayout.BeginVertical("box");
+            GUIStyle labelStyle = new GUIStyle(EditorStyles.label)
+            {
+                fontSize = 13,
+                wordWrap = true
+            };
+            EditorGUILayout.LabelField(message, labelStyle);
+            EditorGUILayout.EndVertical();
         }
 
         private void GenerateReputationBarUI()
@@ -175,8 +198,8 @@ namespace TownsPeople.CustomEditor
         }
 
         /// <summary>
-        /// v9: Builds ReputationBarUI on a developer-supplied custom prefab/GameObject instead
-        /// of generating one from scratch. Scans for a "General"-named row and a "Faction"-named
+        /// Builds ReputationBarUI on a developer-supplied custom prefab/GameObject instead of
+        /// generating one from scratch. Scans for a "General"-named row and a "Faction"-named
         /// row (adding ReputationBarRow to each if not already present), wires each row's own
         /// Fill Image / Label / Value text, extracts the faction row as its own prefab asset
         /// (same role as the Faction Bar Prefab in Generate New mode), and wires the top-level
