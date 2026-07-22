@@ -50,11 +50,6 @@ namespace TownsPeople.CustomEditor
             public Dictionary<string, string> ExtractedPrefabPaths = new Dictionary<string, string>();
         }
 
-        /// <summary>
-        /// Scans rootInstance's hierarchy (including inactive children) for each FieldTarget and
-        /// wires whatever it finds onto targetComponent via SerializedObject/SerializedProperty
-        /// (so it respects prefab overrides and Undo, same as the rest of these wizards).
-        /// </summary>
         public static Result AutoWire(GameObject rootInstance, Component targetComponent, List<FieldTarget> fields, string extractedPrefabFolder)
         {
             var result = new Result();
@@ -87,9 +82,15 @@ namespace TownsPeople.CustomEditor
                     result.ExtractedPrefabPaths[field.PropertyName] = prefabPath;
                     result.Wired.Add(field.PropertyName);
 
-                    // It was a template, not meant to appear as a live sibling — remove it from
-                    // the hierarchy now that it's saved as its own asset.
-                    UnityEngine.Object.DestroyImmediate(match.gameObject);
+                    // v2: It was a template, not meant to appear as a live sibling — remove it
+                    // from the hierarchy now that it's saved as its own asset. Uses
+                    // SafeDestroyImmediate (not a raw DestroyImmediate) because this can be a
+                    // child of a developer's OWN custom prefab (Use Existing Prefab mode) —
+                    // if that exact child happened to be selected in the Hierarchy/Inspector
+                    // when this ran, a raw destroy leaves the Inspector holding a dangling
+                    // reference, throwing MissingReferenceException / SerializedObject
+                    // NotCreatableException on the next repaint.
+                    SafeDestroyImmediate(match.gameObject);
                 }
                 else
                 {
@@ -104,6 +105,27 @@ namespace TownsPeople.CustomEditor
 
             serializedTarget.ApplyModifiedProperties();
             return result;
+        }
+
+        /// <summary>
+        /// v2: DestroyImmediate wrapper that first clears the Editor Selection if it currently
+        /// points at `target` or at anything inside it — otherwise the Inspector (whichever
+        /// Editor is currently drawing that object: GameObjectInspector, RectTransformEditor,
+        /// ImageEditor, etc.) is left holding a reference to a just-destroyed object and throws
+        /// on its next OnEnable/repaint. Callers that set a new Selection afterward (all three
+        /// Generate methods do) will simply overwrite this null with something valid.
+        /// </summary>
+        public static void SafeDestroyImmediate(GameObject target)
+        {
+            if (target == null) return;
+
+            GameObject selected = Selection.activeGameObject;
+            if (selected != null && (selected == target || selected.transform.IsChildOf(target.transform)))
+            {
+                Selection.activeGameObject = null;
+            }
+
+            UnityEngine.Object.DestroyImmediate(target);
         }
 
         private static Transform FindBestMatch(Transform[] candidates, Type expectedType, string[] nameHints, string[] excludeHints, Transform root)

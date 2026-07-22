@@ -30,6 +30,6 @@ MonoBehaviour:
   ShareLikelihood: 100
   TriggerDistance: 3
   GeneralReputationMagnitude: 15
-  TargetFactionID: TownGuard
+  TargetFactionID: Eruidtes Guild
   WitnessOpinionMagnitude: 30
   HearsayCredibility: 0.766

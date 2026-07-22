@@ -20,21 +20,19 @@ namespace TownsPeople.CustomEditor
     /// prefab and have UIElementAutoWirer scan it for matching elements by name + component
     /// type, wiring DialogueMenuUI automatically instead of generating UI from scratch.
     /// </summary>
-    // v18: Added "Use Existing Prefab" mode — see UIElementAutoWirer.
-    // v19: Generate New no longer uses a VerticalLayoutGroup on the panel root or the carousel
-    // slot — every generated child's position/size is baked once and freely editable afterward.
-    // v20: Larger, readable info text in the "Use Existing Prefab" section; Custom UI Prefab /
-    // GameObject label now on its own line above the picker.
-    // v21: FIX — buttonSprite's CreateRoundedRectSprite call was missing _borderColor (CS7036),
-    // introduced back in v18 and unnoticed since it only affects the Option/Leave/Close button
-    // sprite, not the panel sprite. Restored as the 5th argument.
+    // v18: Added "Use Existing Prefab" mode.
+    // v19: Generate New no longer uses a VerticalLayoutGroup on the panel root or the carousel slot.
+    // v20: Larger, readable info text; Custom UI Prefab / GameObject label on its own line.
+    // v21: FIX — buttonSprite's CreateRoundedRectSprite call was missing _borderColor (CS7036).
+    // v22: FIX — option button template cleanup now uses UIElementAutoWirer.SafeDestroyImmediate
+    // instead of a raw DestroyImmediate, preventing MissingReferenceException /
+    // SerializedObjectNotCreatableException in the Inspector if that template (or, more likely,
+    // the extracted element in Use Existing Prefab mode — see UIElementAutoWirer v2) happened to
+    // be selected when this ran.
     public class DialogueMenuUIWizard : EditorWindow
     {
         private const string OutputFolder = "Assets/NPC Creator/Generated UI";
 
-        // Baked layout constants — replace what panelLayout's padding/spacing and each child's
-        // LayoutElement used to express. Same visual result as before, just computed once
-        // instead of every layout pass.
         private const float PanelPadding = 16f;
         private const float PanelSpacing = 10f;
         private const float NameHeight = 32f;
@@ -120,11 +118,6 @@ namespace TownsPeople.CustomEditor
             GUI.backgroundColor = Color.white;
         }
 
-        /// <summary>
-        /// Draws an info box matching the look of the "box" style already used elsewhere in
-        /// this window (Visual Style), but with a larger, more readable fontSize than
-        /// EditorGUILayout.HelpBox allows (HelpBox has no font-size override).
-        /// </summary>
         private static void DrawLargeInfoBox(string message)
         {
             EditorGUILayout.BeginVertical("box");
@@ -142,13 +135,9 @@ namespace TownsPeople.CustomEditor
             EnsureFolderExists(OutputFolder);
             Canvas canvas = FindOrCreateCanvas();
 
-            // Procedurally generated, saved as real Sprite assets so they stay crisp at
-            // any size (9-sliced). Panel/popup share one style, buttons another, both using
-            // the same corner radius/border for visual consistency.
             Sprite panelSprite = ProceduralUISprites.CreateRoundedRectSprite(
                 $"{OutputFolder}/PanelBackground.png", 128, _cornerRadius, _borderThickness, _borderColor, _panelFillTop, _panelFillBottom);
 
-            // v21 FIX: _borderColor was missing here (CS7036) — restored as the 5th argument.
             Sprite buttonSprite = ProceduralUISprites.CreateRoundedRectSprite(
                 $"{OutputFolder}/ButtonBackground.png", 64, _cornerRadius * 0.6f, _borderThickness, _borderColor, _buttonFillTop, _buttonFillBottom);
 
@@ -166,23 +155,17 @@ namespace TownsPeople.CustomEditor
             Image panelBg = panelObj.AddComponent<Image>();
             panelBg.sprite = panelSprite;
             panelBg.type = Image.Type.Sliced;
-            panelBg.color = Color.white; // Tint stays neutral — the gradient/border is baked into the sprite itself.
+            panelBg.color = Color.white;
 
             panelObj.AddComponent<CanvasGroup>();
             CanvasGroupFader panelFader = panelObj.AddComponent<CanvasGroupFader>();
             DialogueMenuUI menuUI = panelObj.AddComponent<DialogueMenuUI>();
 
-            // Click sound source — 2D (non-spatial), since this is UI feedback, not a
-            // world-positioned sound.
             AudioSource clickAudioSource = panelObj.AddComponent<AudioSource>();
             clickAudioSource.playOnAwake = false;
             clickAudioSource.spatialBlend = 0f;
 
-            // No VerticalLayoutGroup here — each direct child below gets its RectTransform set
-            // explicitly instead, so everything stays freely editable afterward.
-
             // --- NPC name header ---
-            // Top-stretch, fixed height, offset down by PanelPadding from the panel's top edge.
             GameObject nameObj = new GameObject("NpcNameText", typeof(RectTransform));
             nameObj.transform.SetParent(panelObj.transform, false);
             RectTransform nameRect = nameObj.GetComponent<RectTransform>();
@@ -198,9 +181,7 @@ namespace TownsPeople.CustomEditor
             nameText.fontStyle = FontStyles.Bold;
             nameText.alignment = TextAlignmentOptions.Center;
 
-            // --- Flexible middle region: houses EITHER the list OR the carousel slot, both
-            // full-stretched inside it. Fills the space between the name header and the Leave
-            // button via a computed stretch inset (Left/Top/Right/Bottom in the Inspector). ---
+            // --- Flexible middle region ---
             GameObject middleContainer = new GameObject("MiddleContainer", typeof(RectTransform));
             middleContainer.transform.SetParent(panelObj.transform, false);
             RectTransform middleRect = middleContainer.GetComponent<RectTransform>();
@@ -236,9 +217,6 @@ namespace TownsPeople.CustomEditor
             contentRect.anchorMax = new Vector2(1f, 1f);
             contentRect.pivot = new Vector2(0.5f, 1f);
 
-            // Deliberately KEPT: this VerticalLayoutGroup stacks a variable, runtime-
-            // instantiated number of dialogue option buttons, so it genuinely needs to stay
-            // automatic.
             VerticalLayoutGroup contentLayout = contentObj.AddComponent<VerticalLayoutGroup>();
             contentLayout.spacing = 6f;
             contentLayout.childControlHeight = false;
@@ -276,7 +254,9 @@ namespace TownsPeople.CustomEditor
 
             string buttonPrefabPath = $"{OutputFolder}/DialogueOptionButton.prefab";
             GameObject savedButtonPrefab = PrefabUtility.SaveAsPrefabAsset(buttonTemplate, buttonPrefabPath);
-            Object.DestroyImmediate(buttonTemplate);
+
+            // v22 FIX: was a raw Object.DestroyImmediate — now goes through the safe helper.
+            UIElementAutoWirer.SafeDestroyImmediate(buttonTemplate);
 
             // ===== Carousel mode UI =====
             GameObject carouselObj = new GameObject("CarouselSlot", typeof(RectTransform));
@@ -287,9 +267,6 @@ namespace TownsPeople.CustomEditor
             carouselFullRect.offsetMin = Vector2.zero;
             carouselFullRect.offsetMax = Vector2.zero;
 
-            // No VerticalLayoutGroup here either — the button + spacing + index text block is
-            // centered exactly as the old MiddleCenter-aligned layout group produced it, but
-            // baked into fixed anchored positions on each child.
             float carouselBlockHeight = CarouselButtonHeight + CarouselSpacing + CarouselIndexHeight;
 
             GameObject carouselButtonObj = new GameObject("CarouselOptionButton", typeof(RectTransform));
@@ -336,10 +313,9 @@ namespace TownsPeople.CustomEditor
             carouselIndexText.fontSize = 14;
             carouselIndexText.color = new Color(1f, 1f, 1f, 0.6f);
 
-            carouselObj.SetActive(false); // List mode is the default — DialogueMenuUI.Awake() also enforces this based on _useCarouselMode.
+            carouselObj.SetActive(false);
 
             // --- Leave button ---
-            // Bottom-stretch, fixed height, offset up by PanelPadding from the panel's bottom edge.
             GameObject leaveObj = new GameObject("LeaveButton", typeof(RectTransform));
             leaveObj.transform.SetParent(panelObj.transform, false);
             RectTransform leaveRect = leaveObj.GetComponent<RectTransform>();
@@ -354,9 +330,6 @@ namespace TownsPeople.CustomEditor
             leaveBg.type = Image.Type.Sliced;
             Button leaveButton = leaveObj.AddComponent<Button>();
 
-            // AnimatedButtonFeedback overwrites Image.color with its own _normalColor at
-            // Awake() — set the reddish Leave tint THROUGH that field, not directly on the
-            // Image, or it would be silently overwritten at runtime.
             AnimatedButtonFeedback leaveFeedback = leaveObj.AddComponent<AnimatedButtonFeedback>();
             SerializedObject serializedLeaveFeedback = new SerializedObject(leaveFeedback);
             serializedLeaveFeedback.FindProperty("_normalColor").colorValue = new Color(1.3f, 0.75f, 0.75f, 1f);
@@ -376,17 +349,14 @@ namespace TownsPeople.CustomEditor
             leaveLabelRect.offsetMin = Vector2.zero;
             leaveLabelRect.offsetMax = Vector2.zero;
 
-            // --- Rumor popup — a sibling of the main panel (same Canvas), so it visually
-            // overlays it. Sized/positioned to sit centered on top, with a portrait square on
-            // the left and an [X] close button. Already freely editable — never was under a
-            // LayoutGroup.
+            // --- Rumor popup ---
             GameObject popupObj = new GameObject("RumorPopupPanel", typeof(RectTransform));
             popupObj.transform.SetParent(canvas.transform, false);
             RectTransform popupRect = popupObj.GetComponent<RectTransform>();
             popupRect.anchorMin = new Vector2(0.5f, 0.5f);
             popupRect.anchorMax = new Vector2(0.5f, 0.5f);
             popupRect.pivot = new Vector2(0.5f, 0.5f);
-            popupRect.sizeDelta = new Vector2(440f, 220f); // Widened to make room for the portrait square.
+            popupRect.sizeDelta = new Vector2(440f, 220f);
             popupRect.anchoredPosition = Vector2.zero;
 
             Image popupBg = popupObj.AddComponent<Image>();
@@ -398,7 +368,6 @@ namespace TownsPeople.CustomEditor
             VideoPlayer popupVideoPlayer = popupObj.AddComponent<VideoPlayer>();
             popupVideoPlayer.playOnAwake = false;
 
-            // Portrait square (left side, fixed size regardless of popup size).
             GameObject portraitObj = new GameObject("PortraitImage", typeof(RectTransform));
             portraitObj.transform.SetParent(popupObj.transform, false);
             Image portraitImage = portraitObj.AddComponent<Image>();
@@ -419,7 +388,7 @@ namespace TownsPeople.CustomEditor
             portraitVideoRect.anchorMax = Vector2.one;
             portraitVideoRect.offsetMin = Vector2.zero;
             portraitVideoRect.offsetMax = Vector2.zero;
-            portraitVideoObj.SetActive(false); // Hidden unless the current NPC has a Portrait Video assigned.
+            portraitVideoObj.SetActive(false);
 
             GameObject popupTextObj = new GameObject("RumorPopupText", typeof(RectTransform));
             popupTextObj.transform.SetParent(popupObj.transform, false);
@@ -428,7 +397,6 @@ namespace TownsPeople.CustomEditor
             popupText.fontSize = 18;
             popupText.text = "...";
             RectTransform popupTextRect = popupTextObj.GetComponent<RectTransform>();
-            // Shifted right to make room for the portrait square.
             popupTextRect.anchorMin = new Vector2(0.40f, 0.08f);
             popupTextRect.anchorMax = new Vector2(0.94f, 0.92f);
             popupTextRect.offsetMin = Vector2.zero;
@@ -502,16 +470,6 @@ namespace TownsPeople.CustomEditor
                 "Great");
         }
 
-        /// <summary>
-        /// Builds DialogueMenuUI on a developer-supplied custom prefab/GameObject instead of
-        /// generating one from scratch. Scans the hierarchy for each named sub-element (name
-        /// header, Leave button, list root, carousel pieces, rumor popup pieces, portrait,
-        /// audio) and wires them all onto DialogueMenuUI, extracting the option button template
-        /// as its own prefab asset the same way Generate New mode does. Reports exactly what it
-        /// could and couldn't find rather than failing silently on a naming mismatch. The root's
-        /// own CanvasGroup/CanvasGroupFader (added here if missing) becomes _panelFader — it
-        /// isn't a distinctly-named child, so it's wired directly rather than scanned for.
-        /// </summary>
         private void GenerateFromExistingPrefab()
         {
             if (_sourcePrefab == null)

@@ -20,16 +20,17 @@ namespace TownsPeople.CustomEditor
     /// prefab and have UIElementAutoWirer scan it for matching elements by name + component
     /// type, wiring ReputationBarUI automatically instead of generating UI from scratch.
     /// </summary>
-    // v8: Bar backgrounds now generated through ProceduralUISprites (rounded corners, border,
-    // vertical gradient) instead of the flat built-in UISprite — matching the visual language
-    // of the Dialogue Menu / [E] prompt work. Both the General row and the Faction row prefab
-    // share the SAME generated sprite asset (one CreateRoundedRectSprite call, reused for
-    // both), guaranteeing they're visually identical by construction rather than just similar.
-    // v9: Added "Use Existing Prefab" mode — see UIElementAutoWirer.
-    // v10: Larger, readable info text in the "Use Existing Prefab" section (HelpBox has no
-    // font-size override, so it's now a custom box via DrawLargeInfoBox). The Custom UI Prefab
-    // / GameObject field's label now sits on its own line above the picker instead of beside
-    // it, so the label text no longer gets cut off in a narrower window.
+    // v8: Bar backgrounds now generated through ProceduralUISprites.
+    // v9: Added "Use Existing Prefab" mode.
+    // v10: Larger, readable info text; Custom UI Prefab / GameObject label on its own line.
+    // v11: FIX — faction row template cleanup now uses SafeDestroyImmediate.
+    // v12: FIX — CreateBarRow()'s Label previously positioned itself using offsets computed as
+    // a fraction of _rowWidth (anchorMax.x = 0.5, offsetMin/Max around -130/-100). That math
+    // only avoided overlapping the bar at one specific row width — at the old default (215) it
+    // already overlapped by ~7.5 units (hidden by the bar's own border), and at other widths the
+    // overlap became clearly visible. The label now anchors purely to the row's own left edge
+    // (independent of _rowWidth entirely) and grows leftward by a fixed, separately-tunable
+    // Label Width / Label Gap — guaranteed never to overlap the bar regardless of Row Width.
     public class ReputationUIWizard : EditorWindow
     {
         private const string OutputFolder = "Assets/NPC Creator/Generated UI";
@@ -44,6 +45,12 @@ namespace TownsPeople.CustomEditor
         private float _rowWidth = 215f;
         private float _rowHeight = 20f;
 
+        // v12: New — independent of _rowWidth, see class-level comment.
+        [Tooltip("Width of the label text area, growing leftward from the row's own left edge. Independent of Row Width — changing Row Width can never cause the label to overlap the bar.")]
+        private float _labelWidth = 130f;
+        [Tooltip("Gap between the label's right edge and the bar's left edge. Increase if the label still looks too close to the bar for your font/size.")]
+        private float _labelGap = 8f;
+
         [Header("Visual Style")]
         private float _cornerRadius = 8f;
         private float _borderThickness = 2f;
@@ -55,7 +62,7 @@ namespace TownsPeople.CustomEditor
         public static void ShowWindow()
         {
             ReputationUIWizard window = GetWindow<ReputationUIWizard>("Reputation UI Wizard");
-            window.minSize = new Vector2(360, 340);
+            window.minSize = new Vector2(360, 380);
             window.Show();
         }
 
@@ -90,7 +97,10 @@ namespace TownsPeople.CustomEditor
                 GUILayout.Label("Bar Dimensions", EditorStyles.boldLabel);
                 _rowWidth = EditorGUILayout.FloatField("Row Width", _rowWidth);
                 _rowHeight = EditorGUILayout.FloatField("Row Height", _rowHeight);
-                EditorGUILayout.HelpBox("Applies to both the General bar and the Faction bar prefab (label and value fill the row automatically, so they scale with it). Each generated bar's RectTransform stays freely resizable afterward in the Inspector.", MessageType.None);
+                EditorGUILayout.Space();
+                _labelWidth = EditorGUILayout.FloatField("Label Width", _labelWidth);
+                _labelGap = EditorGUILayout.FloatField("Label Gap", _labelGap);
+                EditorGUILayout.HelpBox("Row Width/Height size the bar itself. Label Width/Gap independently size the label area to its left — changing one can never cause the label to overlap the bar, since the label no longer depends on Row Width at all.", MessageType.None);
                 EditorGUILayout.EndVertical();
 
                 EditorGUILayout.Space();
@@ -119,11 +129,6 @@ namespace TownsPeople.CustomEditor
             GUI.backgroundColor = Color.white;
         }
 
-        /// <summary>
-        /// v10: Draws an info box matching the look of the "box" style already used elsewhere
-        /// in this window (Bar Dimensions, Visual Style), but with a larger, more readable
-        /// fontSize than EditorGUILayout.HelpBox allows (HelpBox has no font-size override).
-        /// </summary>
         private static void DrawLargeInfoBox(string message)
         {
             EditorGUILayout.BeginVertical("box");
@@ -142,8 +147,6 @@ namespace TownsPeople.CustomEditor
 
             Canvas targetCanvas = FindOrCreateCanvas();
 
-            // One shared sprite, used for both bars below — the actual mechanism that
-            // guarantees General and Faction bars are visually identical, not just similarly coded.
             Sprite barSprite = ProceduralUISprites.CreateRoundedRectSprite(
                 $"{OutputFolder}/ReputationBarBackground.png", 64, _cornerRadius, _borderThickness, _borderColor, _fillTop, _fillBottom);
 
@@ -155,7 +158,10 @@ namespace TownsPeople.CustomEditor
             rootRect.anchorMax = new Vector2(1f, 1f);
             rootRect.pivot = new Vector2(1f, 1f);
             rootRect.anchoredPosition = new Vector2(-20f, -20f);
-            rootRect.sizeDelta = new Vector2(_rowWidth + 20f, 220f);
+            // v12: Now reserves room for the label too (previously only +20f, which was never
+            // enough to fit the ~130-unit label the old formula produced) — purely cosmetic
+            // (nothing clips against this), but keeps the panel's own bounds honest.
+            rootRect.sizeDelta = new Vector2(_rowWidth + _labelWidth + _labelGap + 20f, 220f);
 
             VerticalLayoutGroup rootLayout = rootObj.AddComponent<VerticalLayoutGroup>();
             rootLayout.spacing = 6f;
@@ -163,6 +169,10 @@ namespace TownsPeople.CustomEditor
             rootLayout.childControlWidth = false;
             rootLayout.childForceExpandHeight = false;
             rootLayout.childForceExpandWidth = false;
+            // v12: Rows sit at the left edge of a container that's now wider than just the bar
+            // itself — without this, VerticalLayoutGroup's default UpperLeft alignment would
+            // still work fine, but explicit is safer than relying on the default.
+            rootLayout.childAlignment = TextAnchor.UpperRight;
 
             ReputationBarUI barUI = rootObj.AddComponent<ReputationBarUI>();
 
@@ -176,11 +186,12 @@ namespace TownsPeople.CustomEditor
             containerLayout.childControlWidth = false;
             containerLayout.childForceExpandHeight = false;
             containerLayout.childForceExpandWidth = false;
+            containerLayout.childAlignment = TextAnchor.UpperRight;
 
             ReputationBarRow factionTemplate = CreateBarRow(null, "FactionReputationBarRow", "Faction", barSprite);
             string prefabPath = $"{OutputFolder}/FactionReputationBarRow.prefab";
             GameObject savedPrefab = PrefabUtility.SaveAsPrefabAsset(factionTemplate.gameObject, prefabPath);
-            Object.DestroyImmediate(factionTemplate.gameObject);
+            UIElementAutoWirer.SafeDestroyImmediate(factionTemplate.gameObject);
 
             SerializedObject serializedBarUI = new SerializedObject(barUI);
             serializedBarUI.FindProperty("_generalRow").objectReferenceValue = generalRow;
@@ -193,19 +204,10 @@ namespace TownsPeople.CustomEditor
 
             EditorUtility.DisplayDialog(
                 "Success!",
-                $"Reputation Bar UI generated and wired automatically ({_rowWidth}x{_rowHeight} bars).\n\nFaction row prefab saved to:\n{prefabPath}",
+                $"Reputation Bar UI generated and wired automatically ({_rowWidth}x{_rowHeight} bars, {_labelWidth}-wide labels).\n\nFaction row prefab saved to:\n{prefabPath}",
                 "Great");
         }
 
-        /// <summary>
-        /// Builds ReputationBarUI on a developer-supplied custom prefab/GameObject instead of
-        /// generating one from scratch. Scans for a "General"-named row and a "Faction"-named
-        /// row (adding ReputationBarRow to each if not already present), wires each row's own
-        /// Fill Image / Label / Value text, extracts the faction row as its own prefab asset
-        /// (same role as the Faction Bar Prefab in Generate New mode), and wires the top-level
-        /// ReputationBarUI fields. Reports exactly what it could and couldn't find rather than
-        /// failing silently on a naming mismatch.
-        /// </summary>
         private void GenerateFromExistingPrefab()
         {
             if (_sourcePrefab == null)
@@ -239,8 +241,6 @@ namespace TownsPeople.CustomEditor
 
             int wiredRowFields = 0, totalRowFields = 0;
 
-            // Wire each row's own Fill Image / Label / Value BEFORE extracting the faction row
-            // as a prefab, since extraction removes it from the live hierarchy.
             if (generalRowTransform != null)
             {
                 ReputationBarRow generalRow = generalRowTransform.GetComponent<ReputationBarRow>();
@@ -292,11 +292,6 @@ namespace TownsPeople.CustomEditor
             };
         }
 
-        /// <summary>
-        /// Finds a child whose name matches the given hints and ensures it carries a
-        /// ReputationBarRow component (adding one if missing) so the top-level type+name scan
-        /// can match it.
-        /// </summary>
         private static Transform EnsureRowComponent(Transform root, string[] nameHints)
         {
             foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
@@ -330,6 +325,11 @@ namespace TownsPeople.CustomEditor
             fillImage.fillOrigin = (int)Image.OriginHorizontal.Left;
             fillImage.color = Color.white; // Gradient/border baked into the sprite — tint stays neutral.
 
+            // v12: Anchored purely to the row's own left edge (both anchorMin.x and anchorMax.x
+            // = 0) and grows LEFTWARD by a fixed _labelWidth, with a guaranteed _labelGap
+            // between its right edge and the bar's left edge. This is now completely
+            // independent of _rowWidth — no formula ties the two together anymore, so there's
+            // no row width value that can cause the label to creep into the bar.
             GameObject labelObj = new GameObject("Label", typeof(RectTransform));
             labelObj.transform.SetParent(rowObj.transform, false);
             TextMeshProUGUI labelText = labelObj.AddComponent<TextMeshProUGUI>();
@@ -338,9 +338,10 @@ namespace TownsPeople.CustomEditor
             labelText.fontSize = 14;
             RectTransform labelRect = labelObj.GetComponent<RectTransform>();
             labelRect.anchorMin = new Vector2(0f, 0f);
-            labelRect.anchorMax = new Vector2(0.5f, 1f);
-            labelRect.offsetMin = new Vector2(-130f, 0f);
-            labelRect.offsetMax = new Vector2(-100f, 0f);
+            labelRect.anchorMax = new Vector2(0f, 1f);
+            labelRect.pivot = new Vector2(1f, 0.5f);
+            labelRect.offsetMin = new Vector2(-(_labelGap + _labelWidth), 0f);
+            labelRect.offsetMax = new Vector2(-_labelGap, 0f);
 
             GameObject valueObj = new GameObject("Value", typeof(RectTransform));
             valueObj.transform.SetParent(rowObj.transform, false);

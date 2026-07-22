@@ -16,5 +16,6 @@ MonoBehaviour:
   Mode: 1
   CrossfadeDuration: 0.15
   LoopDuration: 5
+  TargetController: {fileID: 9100000, guid: c005e00645aae434ead3010b4a7acc45, type: 2}
   AnimatorStateNames:
   - Idle_Scared_01
