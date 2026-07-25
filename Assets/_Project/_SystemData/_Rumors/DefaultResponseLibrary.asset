@@ -14,16 +14,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Project.Data.GeneralRumorResponseLibrary
   ShowTextBubble: 0
   PositiveResponses:
-  - ResponseText: Default positive Library Reponse  1
-    MaleVoiceLine: {fileID: 8300000, guid: 996a8a2ce79dd334291402c8051dc5f4, type: 3}
-    FemaleVoiceLine: {fileID: 8300000, guid: d26bf8e3c5c78184ab4209f083db92e5, type: 3}
-  - ResponseText: Default positive Library Reponse  2
-    MaleVoiceLine: {fileID: 8300000, guid: 6e824b81b79b30e42a89772eee31629d, type: 3}
-    FemaleVoiceLine: {fileID: 8300000, guid: b0fc8c98f1c475d4b8ed97a69c059560, type: 3}
+  - ResponseText: Sorry, nothing new to say good traveller!
+    MaleVoiceLine: {fileID: 8300000, guid: df2d982dae40f8742afb0333f0508f6a, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: 957adadbe25ce3943932e4e532559e37, type: 3}
+  - ResponseText: I havent heard anything new
+    MaleVoiceLine: {fileID: 8300000, guid: 32623f841ddc58c4da1e5040dc8336df, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: 9596fdd4e375e3a449b2aaf5eb40ce03, type: 3}
   NegativeResponses:
-  - ResponseText: Default negative library response 2
+  - ResponseText: I got nothing to say to you
     MaleVoiceLine: {fileID: 8300000, guid: 41dc8db037173b54a9839e52fdabaf2a, type: 3}
     FemaleVoiceLine: {fileID: 8300000, guid: 0b9c52506ddbbd843bb21cf69b539c7b, type: 3}
-  - ResponseText: Default negative library response 2
+  - ResponseText: If its you doing the asking, then I know nothing
     MaleVoiceLine: {fileID: 8300000, guid: 756c63794effa664992855e3abfd4525, type: 3}
     FemaleVoiceLine: {fileID: 8300000, guid: 6ea371987fd26934fa236eb03a3115bf, type: 3}

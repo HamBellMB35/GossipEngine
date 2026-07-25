@@ -77,6 +77,9 @@ crashlytics-build.properties
 /[Aa]ssets/DragonsanStudios
 /[Aa]ssets/Starter Assets
 /[Aa]ssets/MedievalKingdomUI
+/[Aa]ssets/Hivemind
+/[Aa]ssets/IdaFaber
+/[Aa]ssets/Scenes/VideoScene3.unity
 
 # Local Secrets Repository Blocks
 secret_key.txt

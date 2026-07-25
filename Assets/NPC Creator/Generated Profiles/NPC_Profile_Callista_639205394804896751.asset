@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_Scond_NPC_639198913944481377
-  m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
-  DefaultName: Scond NPC
+  m_Name: NPC_Profile_Callista_639205394804896751
+  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.Data.NPCArchetypeConfiguration
+  DefaultName: Callista
   RigStyle: 0
   BrainStyle: 0
   InteractionPromptText: 'Talk [E]'

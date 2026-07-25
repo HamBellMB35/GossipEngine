@@ -19,6 +19,18 @@ namespace TownsPeople.CustomEditor
     // including nested subfolders, if it doesn't already exist. Also added UX polish: the
     // Generate button is now disabled with an explanatory HelpBox instead of only failing
     // after the click, and the generated asset is pinged in the Project window.
+    //
+    // v25: The per-NPC AudioSource previously had no spatial configuration at all — now
+    // configured as a real 3D spatial source at generation time, with Min Distance / Max
+    // Distance / Rolloff Mode exposed as tunable wizard fields.
+    //
+    // v26: New NPCs previously always spawned at world origin (0,0,0) — every generated
+    // root GameObject's transform was left at its default. Now optionally positions the new
+    // NPC at whatever point the Scene view camera is currently looking at (raycast from that
+    // camera's position along its forward direction, landing on the first collider hit), with
+    // a fallback distance for when nothing's hit. Editor-time only — this is the Scene view
+    // camera you navigate with, not the runtime/Cinemachine player camera, since generation
+    // happens before Play mode.
 
     /// <summary>
     /// Professional asset store pipeline wizard window that dynamically scans project assemblies.
@@ -37,6 +49,13 @@ namespace TownsPeople.CustomEditor
         // --- Output Settings ---
         [Tooltip("Where generated NPC profile assets are saved. Created automatically (including subfolders) if it doesn't exist.")]
         private string _outputFolderPath = "Assets/NPC Creator/Generated Profiles";
+
+        // v26: Spawn placement — see class-level comment.
+        [Tooltip("If enabled, the new NPC spawns at whatever point the Scene view camera is currently looking at, instead of world origin (0,0,0).")]
+        private bool _spawnAtSceneCameraFocus = true;
+        [Tooltip("Used only if the Scene view camera's look-ray doesn't hit any collider (e.g. aimed at open sky) — the NPC spawns this many world units in front of the camera instead.")]
+        private float _spawnFallbackDistance = 5f;
+        private const float SpawnRaycastMaxDistance = 1000f;
 
         // --- Editable UI & Prompt Parameters ---
         private string _promptTextString = "Talk [E]";
@@ -79,6 +98,16 @@ namespace TownsPeople.CustomEditor
         private Color _promptBorderColor = new Color(0.80f, 0.66f, 0.32f, 1f);
         private Color _promptFillTop = new Color(0.16f, 0.16f, 0.16f, 0.9f);
         private Color _promptFillBottom = new Color(0.06f, 0.06f, 0.06f, 0.9f);
+
+        // v25: NPC audio spatialization.
+        [Tooltip("Full volume within this distance (world units) from the NPC. Below this, the player hears rumor/greeting/response audio at 100% regardless of exact distance.")]
+        private float _npcAudioMinDistance = 2f;
+
+        [Tooltip("Beyond this distance (world units), the NPC's audio is inaudible.")]
+        private float _npcAudioMaxDistance = 15f;
+
+        [Tooltip("How volume falls off between Min and Max Distance. Logarithmic (Unity's default) sounds most natural for most cases; Linear falls off evenly; Custom lets you edit the AudioSource's rolloff curve by hand afterward.")]
+        private AudioRolloffMode _npcAudioRolloffMode = AudioRolloffMode.Logarithmic;
 
         // v24: Shared with DialogueMenuUIWizard's output location — generated UI assets from
         // either wizard live in the same place, separate from _outputFolderPath (which is
@@ -123,6 +152,22 @@ namespace TownsPeople.CustomEditor
             _npcName = EditorGUILayout.TextField("NPC Display Name", _npcName);
             _meshModel = (GameObject)EditorGUILayout.ObjectField("3D Mesh Asset / Prefab", _meshModel, typeof(GameObject), false);
             _rigType = (AnimationRigType)EditorGUILayout.EnumPopup("Animation Rig Setup", _rigType);
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space();
+
+            // v26: Spawn Placement — where the new NPC lands on generation.
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("Spawn Placement", EditorStyles.boldLabel);
+            _spawnAtSceneCameraFocus = EditorGUILayout.ToggleLeft(
+                new GUIContent("Spawn At Scene View Camera Focus", "Spawns the new NPC wherever the Scene view camera is currently looking, instead of world origin (0,0,0)."),
+                _spawnAtSceneCameraFocus);
+            GUI.enabled = _spawnAtSceneCameraFocus;
+            _spawnFallbackDistance = EditorGUILayout.FloatField(
+                new GUIContent("Fallback Distance", "Used only if the camera's look-ray doesn't hit any collider (e.g. aimed at open sky) — spawns this many units in front of the camera instead."),
+                _spawnFallbackDistance);
+            GUI.enabled = true;
+            EditorGUILayout.HelpBox("Requires an active Scene view with colliders in it (e.g. your ground/floor) to land precisely. If disabled, or no Scene view is open, the NPC spawns at world origin as before.", MessageType.None);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
@@ -224,6 +269,20 @@ namespace TownsPeople.CustomEditor
             _promptFillTop = EditorGUILayout.ColorField("Fill (Top)", _promptFillTop);
             _promptFillBottom = EditorGUILayout.ColorField("Fill (Bottom)", _promptFillBottom);
             EditorGUILayout.HelpBox("Shared across every generated NPC — regenerating any NPC after changing these values updates the look for all of them, since they reference the same generated sprite asset.", MessageType.None);
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space();
+
+            // v25: NPC audio spatialization.
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("NPC Audio Spatialization", EditorStyles.boldLabel);
+            _npcAudioMinDistance = EditorGUILayout.FloatField(
+                new GUIContent("Min Distance", "Full volume within this distance from the NPC."), _npcAudioMinDistance);
+            _npcAudioMaxDistance = EditorGUILayout.FloatField(
+                new GUIContent("Max Distance", "Beyond this distance, the NPC's audio is inaudible."), _npcAudioMaxDistance);
+            _npcAudioRolloffMode = (AudioRolloffMode)EditorGUILayout.EnumPopup(
+                new GUIContent("Rolloff Mode", "How volume falls off between Min and Max Distance."), _npcAudioRolloffMode);
+            EditorGUILayout.HelpBox("Controls how far away the player can hear this NPC's rumor/greeting/response audio, and how it fades with distance. Applies to newly generated NPCs only — existing NPCs in a scene need their AudioSource updated manually (Spatial Blend → 3D, then set Min/Max Distance to match) or need to be regenerated.", MessageType.None);
             EditorGUILayout.EndVertical();
 
             // Debug/visualization add-on toggle.
@@ -396,6 +455,39 @@ namespace TownsPeople.CustomEditor
         }
 
         /// <summary>
+        /// v26: Computes where a newly generated NPC should spawn — either the point the
+        /// active Scene view camera is currently looking at (raycast from its position along
+        /// its forward direction), or world origin if that's disabled/unavailable. If the ray
+        /// doesn't hit any collider within SpawnRaycastMaxDistance, falls back to a fixed
+        /// distance directly in front of the camera rather than the ray's origin — landing the
+        /// NPC somewhere sensible/visible instead of at the camera itself.
+        /// </summary>
+        private Vector3 ComputeSpawnPosition()
+        {
+            if (!_spawnAtSceneCameraFocus)
+            {
+                return Vector3.zero;
+            }
+
+            SceneView sceneView = SceneView.lastActiveSceneView;
+            if (sceneView == null || sceneView.camera == null)
+            {
+                Debug.LogWarning("<color=orange>[NPC Creator Wizard]</color> 'Spawn At Scene View Camera Focus' is enabled, but no active Scene view was found — spawning at world origin instead. Open a Scene view tab and try again for camera-relative placement.");
+                return Vector3.zero;
+            }
+
+            Camera sceneCamera = sceneView.camera;
+            Ray lookRay = new Ray(sceneCamera.transform.position, sceneCamera.transform.forward);
+
+            if (Physics.Raycast(lookRay, out RaycastHit hit, SpawnRaycastMaxDistance))
+            {
+                return hit.point;
+            }
+
+            return lookRay.GetPoint(_spawnFallbackDistance);
+        }
+
+        /// <summary>
         /// Converts an absolute OS path (from OpenFolderPanel) into a project-relative
         /// "Assets/..." path. Returns null if the folder isn't inside this project.
         /// </summary>
@@ -532,6 +624,11 @@ namespace TownsPeople.CustomEditor
             GameObject rootInstance = new GameObject($"NPC_AssetStore_{resolvedName}");
             Undo.RegisterCreatedObjectUndo(rootInstance, "Create Modular NPC Root");
 
+            // v26: Position the root at the computed spawn point BEFORE anything gets parented
+            // under it — children below use localPosition, so they inherit this world position
+            // automatically once parented.
+            rootInstance.transform.position = ComputeSpawnPosition();
+
             // v9: Every generated NPC defaults to the "NPC" layer (created automatically if
             // it doesn't exist yet), applied to the whole hierarchy. This gives
             // PlayerDeedBroadcaster's Npc Layer Mask something real to filter witness
@@ -608,7 +705,14 @@ namespace TownsPeople.CustomEditor
             }
 
             NPCProximityGossip proximityLogic = rootInstance.AddComponent<NPCProximityGossip>();
-            rootInstance.AddComponent<AudioSource>();
+
+            // v25: Configured as a real 3D spatial source.
+            AudioSource npcAudioSource = rootInstance.AddComponent<AudioSource>();
+            npcAudioSource.spatialBlend = 1f;
+            npcAudioSource.rolloffMode = _npcAudioRolloffMode;
+            npcAudioSource.minDistance = _npcAudioMinDistance;
+            npcAudioSource.maxDistance = _npcAudioMaxDistance;
+            npcAudioSource.playOnAwake = false;
 
             // v5: Every generated NPC now gets an NPCAnimationBridge automatically — previously
             // this had to be added by hand, meaning tone-driven animation and the exit-revert

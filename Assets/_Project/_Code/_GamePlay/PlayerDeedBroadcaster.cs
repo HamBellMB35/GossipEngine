@@ -18,6 +18,14 @@ namespace TownsPeople.GamePlay
     // FactionReputationImpact/WitnessOpinionImpact fields. Faction impact is now automatically
     // derived at ReputationService.FactionImpactRateMultiplier of the general impact, rather
     // than being a second number the designer has to keep in sync by hand.
+    // v3: Added a global WitnessReactionMode + player-side animation trigger. REVERTED in v4.
+    // v4: v3's approach was wrong — witness reaction is a per-NPC choice, not one global
+    // player-side setting. Reverted those fields entirely. Each witnessing NPC now decides for
+    // itself via an OPTIONAL NPCWitnessReaction component: if present and set to PlayAnimation,
+    // that NPC plays its own configured reaction animation/audio instead of presenting the
+    // rumor normally. If absent, or left at PresentRumor, behavior is identical to v2 — this
+    // component is purely additive. Learning the rumor and the personal opinion adjustment
+    // remain unconditional either way (game state, not presentation).
     public class PlayerDeedBroadcaster : MonoBehaviour
     {
         [Tooltip("How far from the player an NPC can witness a deed.")]
@@ -77,6 +85,15 @@ namespace TownsPeople.GamePlay
             }
         }
 
+        /// <summary>
+        /// v4: LearnRumor and the personal-opinion witness modifier remain unconditional (game
+        /// state). The presentation step now checks THIS SPECIFIC NPC's own OPTIONAL
+        /// NPCWitnessReaction component: if present and set to PlayAnimation, that NPC plays
+        /// its own configured reaction instead of the normal rumor presentation. If the
+        /// component is absent, or left at PresentRumor, behavior is identical to before this
+        /// component existed — each NPC decides independently, so a mixed group of witnesses
+        /// can react in different ways to the same deed.
+        /// </summary>
         private void NotifyWitness(NPCGossipMemory memory, RumorTemplate deedRumor)
         {
             memory.LearnRumor(deedRumor, credibility: 1f);
@@ -87,7 +104,15 @@ namespace TownsPeople.GamePlay
                 opinion.ApplyWitnessModifier(deedRumor.SignedWitnessOpinionImpact);
             }
 
-            memory.PresentRumor(deedRumor);
+            NPCWitnessReaction reaction = memory.GetComponent<NPCWitnessReaction>();
+            if (reaction != null && reaction.Mode == NPCWitnessReaction.ReactionMode.PlayAnimation)
+            {
+                reaction.PlayWitnessReaction();
+            }
+            else
+            {
+                memory.PresentRumor(deedRumor);
+            }
         }
 
 #if UNITY_EDITOR

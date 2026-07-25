@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_Hammy_Wammy_639198434414107751
-  m_EditorClassIdentifier: Assembly-CSharp::Project.Data.NPCArchetypeConfiguration
-  DefaultName: Hammy Wammy
+  m_Name: NPC_Profile_Calista_639205407298126978
+  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.Data.NPCArchetypeConfiguration
+  DefaultName: Calista
   RigStyle: 0
   BrainStyle: 0
   InteractionPromptText: 'Talk [E]'
