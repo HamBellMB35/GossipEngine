@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine.UI;
 using TMPro;
 using System;
@@ -24,13 +25,17 @@ namespace TownsPeople.CustomEditor
     // configured as a real 3D spatial source at generation time, with Min Distance / Max
     // Distance / Rolloff Mode exposed as tunable wizard fields.
     //
-    // v26: New NPCs previously always spawned at world origin (0,0,0) — every generated
-    // root GameObject's transform was left at its default. Now optionally positions the new
-    // NPC at whatever point the Scene view camera is currently looking at (raycast from that
-    // camera's position along its forward direction, landing on the first collider hit), with
-    // a fallback distance for when nothing's hit. Editor-time only — this is the Scene view
-    // camera you navigate with, not the runtime/Cinemachine player camera, since generation
-    // happens before Play mode.
+    // v26: New NPCs previously always spawned at world origin (0,0,0) — now optionally
+    // positioned at whatever point the Scene view camera is currently looking at.
+    //
+    // v27: Every full NPC (Common/Vendor/QuestGiver — everything except NonDialogue_NPC, which
+    // has no NPCGossipMemory and can therefore never be counted as a witness by
+    // PlayerDeedBroadcaster) now automatically gets an NPCWitnessReaction component, defaulting
+    // to Present Rumor mode (purely additive — no behavior change unless a developer later
+    // switches an NPC to Play Animation). Its Animator and Reaction Animation States are
+    // pre-populated exactly as if it had just been manually added via Add Component — Reset()
+    // doesn't fire from a scripted AddComponent() call, so this replicates that same population
+    // logic directly here (reusing NPCWitnessReaction.CollectAllStateNames, now public).
 
     /// <summary>
     /// Professional asset store pipeline wizard window that dynamically scans project assemblies.
@@ -50,7 +55,7 @@ namespace TownsPeople.CustomEditor
         [Tooltip("Where generated NPC profile assets are saved. Created automatically (including subfolders) if it doesn't exist.")]
         private string _outputFolderPath = "Assets/NPC Creator/Generated Profiles";
 
-        // v26: Spawn placement — see class-level comment.
+        // v26: Spawn placement.
         [Tooltip("If enabled, the new NPC spawns at whatever point the Scene view camera is currently looking at, instead of world origin (0,0,0).")]
         private bool _spawnAtSceneCameraFocus = true;
         [Tooltip("Used only if the Scene view camera's look-ray doesn't hit any collider (e.g. aimed at open sky) — the NPC spawns this many world units in front of the camera instead.")]
@@ -216,7 +221,7 @@ namespace TownsPeople.CustomEditor
             }
             if (_selectedVariant == NpcVariantType.NonDialogue_NPC)
             {
-                EditorGUILayout.HelpBox("Skips the full rumor/gossip system entirely (no NPCGossipMemory, no rumor indicator). Only ever greets the player with a reputation-driven Positive/Negative response from the General Response Library below. Lighter weight — intended for background/ambient NPCs.", MessageType.Info);
+                EditorGUILayout.HelpBox("Skips the full rumor/gossip system entirely (no NPCGossipMemory, no rumor indicator, no witness reaction). Only ever greets the player with a reputation-driven Positive/Negative response from the General Response Library below. Lighter weight — intended for background/ambient NPCs.", MessageType.Info);
             }
 
             EditorGUILayout.BeginHorizontal();
@@ -293,6 +298,7 @@ namespace TownsPeople.CustomEditor
                 new GUIContent("Include Rumor Indicator", "Spawns a small colored sphere above this NPC's head for each rumor it currently knows. Purely cosmetic/debug — safe to leave off. Unavailable on Non-Dialogue NPCs (no rumor memory to track)."),
                 _includeRumorIndicator);
             GUI.enabled = true;
+            EditorGUILayout.HelpBox("NPCWitnessReaction is now added automatically to every full NPC (Common/Vendor/Quest Giver) — defaulting to Present Rumor mode, so nothing changes unless you later switch an individual NPC to Play Animation. Not added to Non-Dialogue NPCs (they're never counted as witnesses).", MessageType.None);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
@@ -743,6 +749,37 @@ namespace TownsPeople.CustomEditor
             if (_includeRumorIndicator && _selectedVariant != NpcVariantType.NonDialogue_NPC)
             {
                 rootInstance.AddComponent<NPCRumorIndicator>();
+            }
+
+            // v27: Every full NPC now automatically gets NPCWitnessReaction, defaulting to
+            // Present Rumor mode (purely additive — no behavior change unless later switched to
+            // Play Animation on a per-NPC basis). Not added to Non-Dialogue NPCs, which have no
+            // NPCGossipMemory and are therefore never counted as witnesses by
+            // PlayerDeedBroadcaster in the first place. _animator and the full states list are
+            // pre-populated here directly — Reset() (which normally does this when the
+            // component is added manually via the Inspector) doesn't fire from a scripted
+            // AddComponent() call, so this replicates the same logic using the now-public
+            // NPCWitnessReaction.CollectAllStateNames().
+            if (_selectedVariant != NpcVariantType.NonDialogue_NPC)
+            {
+                NPCWitnessReaction witnessReaction = rootInstance.AddComponent<NPCWitnessReaction>();
+                SerializedObject serializedWitnessReaction = new SerializedObject(witnessReaction);
+                serializedWitnessReaction.FindProperty("_animator").objectReferenceValue = characterAnimator;
+
+                AnimatorController generatedController = characterAnimator.runtimeAnimatorController as AnimatorController;
+                if (generatedController != null)
+                {
+                    List<string> allStates = NPCWitnessReaction.CollectAllStateNames(generatedController);
+                    SerializedProperty statesProp = serializedWitnessReaction.FindProperty("_reactionAnimationStates");
+                    statesProp.ClearArray();
+                    for (int i = 0; i < allStates.Count; i++)
+                    {
+                        statesProp.InsertArrayElementAtIndex(i);
+                        statesProp.GetArrayElementAtIndex(i).stringValue = allStates[i];
+                    }
+                }
+
+                serializedWitnessReaction.ApplyModifiedProperties();
             }
 
             // Step 4: Automated Master Worldspace UI Canvas

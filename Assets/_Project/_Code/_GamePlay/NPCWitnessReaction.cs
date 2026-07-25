@@ -1,6 +1,10 @@
 using System.Collections.Generic;
 using UnityEngine;
 using TownsPeople.Data;
+#if UNITY_EDITOR
+using System.Linq;
+using UnityEditor.Animations;
+#endif
 
 namespace TownsPeople.GamePlay
 {
@@ -21,6 +25,13 @@ namespace TownsPeople.GamePlay
     /// regardless of this setting — those are game state, not presentation, and are applied by
     /// PlayerDeedBroadcaster before it even checks this component.
     /// </summary>
+    // v2: Auto-resolves _animator from the sibling NPCAnimationBridge (Reset()/OnValidate(),
+    // editor-only) and auto-populates Reaction Animation States from that Animator's Controller
+    // the first time both are resolved and the list is empty.
+    // v3: CollectAllStateNames() changed from private to public static, so
+    // NPCCreatorWizardWindow can call it directly when auto-adding this component at NPC
+    // generation time (Reset() doesn't fire from a scripted AddComponent call, so the wizard
+    // replicates the same population logic itself rather than duplicating it separately).
     [RequireComponent(typeof(NPCAnimationBridge))]
     public class NPCWitnessReaction : MonoBehaviour
     {
@@ -33,10 +44,10 @@ namespace TownsPeople.GamePlay
         [Tooltip("Present Rumor: this NPC reacts to a witnessed deed normally (speech bubble/audio/animation) — identical to not having this component at all. Play Animation: that presentation is suppressed, and one of this NPC's own Reaction Animation States plays instead, with an optional Reaction Audio Clip.")]
         [SerializeField] private ReactionMode _mode = ReactionMode.PresentRumor;
 
-        [Tooltip("The Animator driving this NPC's animation states. Auto-resolved from this GameObject or its children if left empty (same resolution as NPCAnimationBridge). Used to populate the Reaction Animation States dropdown below — should point at the same Animator as this NPC's NPCAnimationBridge.")]
+        [Tooltip("The Animator driving this NPC's animation states. Auto-resolved from this GameObject's NPCAnimationBridge (or its children) the moment this component is added. Used to populate the Reaction Animation States dropdown below — kept in sync with the same Animator as this NPC's NPCAnimationBridge.")]
         [SerializeField] private Animator _animator;
 
-        [Tooltip("Pool of Animator state names this NPC can play when it witnesses a deed in Play Animation mode. One is chosen at random each time. Populated as a dropdown from the Animator assigned above.")]
+        [Tooltip("Pool of Animator state names this NPC can play when it witnesses a deed in Play Animation mode. One is chosen at random each time. Auto-populated with every state from the Animator above the first time both are resolved and this list is empty — freely add/remove afterward.")]
         [AnimatorStateName(nameof(_animator))]
         [SerializeField] private List<string> _reactionAnimationStates = new List<string>();
 
@@ -51,6 +62,11 @@ namespace TownsPeople.GamePlay
         public ReactionMode Mode => _mode;
 
         private void Awake()
+        {
+            ResolveRuntimeReferences();
+        }
+
+        private void ResolveRuntimeReferences()
         {
             if (_animator == null)
             {
@@ -68,6 +84,85 @@ namespace TownsPeople.GamePlay
 
             _animationBridge = GetComponent<NPCAnimationBridge>();
         }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// Fires the instant this component is added via Add Component (or via the Inspector's
+        /// right-click "Reset"). Editor-only — never runs in a build, matching the
+        /// UNITY_EDITOR-gated pattern already used elsewhere in this project (e.g.
+        /// PlayerDeedBroadcaster.OnDrawGizmosSelected).
+        /// </summary>
+        private void Reset()
+        {
+            AutoResolveAnimator();
+            AutoPopulateReactionStatesIfEmpty();
+        }
+
+        /// <summary>
+        /// Also re-checks on every Inspector change, in case NPCAnimationBridge's own Animator
+        /// gets assigned/changed AFTER this component was first added (Reset() only fires once).
+        /// </summary>
+        private void OnValidate()
+        {
+            AutoResolveAnimator();
+            AutoPopulateReactionStatesIfEmpty();
+        }
+
+        private void AutoResolveAnimator()
+        {
+            if (_animator != null) return;
+
+            NPCAnimationBridge bridge = GetComponent<NPCAnimationBridge>();
+            if (bridge != null && bridge.Animator != null)
+            {
+                _animator = bridge.Animator;
+                return;
+            }
+
+            _animator = GetComponent<Animator>();
+            if (_animator == null)
+            {
+                _animator = GetComponentInChildren<Animator>();
+            }
+        }
+
+        private void AutoPopulateReactionStatesIfEmpty()
+        {
+            if (_animator == null) return;
+            if (_reactionAnimationStates != null && _reactionAnimationStates.Count > 0) return;
+
+            AnimatorController controller = _animator.runtimeAnimatorController as AnimatorController;
+            if (controller == null) return;
+
+            _reactionAnimationStates = CollectAllStateNames(controller);
+        }
+
+        /// <summary>
+        /// v3: Public so NPCCreatorWizardWindow can reuse this exact logic when auto-adding
+        /// this component at NPC generation time, instead of duplicating it separately there.
+        /// </summary>
+        public static List<string> CollectAllStateNames(AnimatorController controller)
+        {
+            var names = new List<string>();
+            foreach (AnimatorControllerLayer layer in controller.layers)
+            {
+                CollectStateNamesRecursive(layer.stateMachine, names);
+            }
+            return names.Distinct().OrderBy(n => n).ToList();
+        }
+
+        private static void CollectStateNamesRecursive(AnimatorStateMachine stateMachine, List<string> names)
+        {
+            foreach (ChildAnimatorState childState in stateMachine.states)
+            {
+                names.Add(childState.state.name);
+            }
+            foreach (ChildAnimatorStateMachine childMachine in stateMachine.stateMachines)
+            {
+                CollectStateNamesRecursive(childMachine.stateMachine, names);
+            }
+        }
+#endif
 
         /// <summary>
         /// Plays a random reaction animation (via NPCAnimationBridge) and, if any are

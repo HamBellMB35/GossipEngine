@@ -17,6 +17,10 @@ namespace TownsPeople.GamePlay
     // still had to match state name). Instead, the string field now uses [AnimatorStateName],
     // which draws it as a dropdown of real states pulled straight from the assigned Animator's
     // controller — typos and mismatches are no longer possible at all.
+    // v8: Added a public Animator getter so sibling components (e.g. NPCWitnessReaction) can
+    // reuse this bridge's already-resolved Animator reference instead of independently
+    // re-resolving (and potentially finding a different one in an edge case with multiple
+    // Animators in the hierarchy).
     public class NPCAnimationBridge : MonoBehaviour
     {
         [Header("Animation Settings")]
@@ -32,6 +36,13 @@ namespace TownsPeople.GamePlay
 
         [Tooltip("The Animator driving this NPC's animation states. Auto-resolved from this GameObject or its children if left empty. Also used to populate the Default Idle States dropdown above.")]
         [SerializeField] private Animator _animator;
+
+        /// <summary>
+        /// v8: Read-only access to this bridge's resolved Animator — lets sibling components
+        /// (e.g. NPCWitnessReaction) reuse the exact same reference instead of re-resolving
+        /// independently.
+        /// </summary>
+        public Animator Animator => _animator;
 
         private ReputationService _reputation;
         private readonly List<int> _defaultIdleStateHashes = new List<int>();
