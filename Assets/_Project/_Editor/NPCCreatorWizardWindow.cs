@@ -627,7 +627,7 @@ namespace TownsPeople.CustomEditor
             // consistently for the GameObject, NpcName, and the saved profile asset.
             string resolvedName = GetUniqueNpcName(_npcName);
 
-            GameObject rootInstance = new GameObject($"NPC_AssetStore_{resolvedName}");
+            GameObject rootInstance = new GameObject($"TownsPeople_NPC_{resolvedName}");
             Undo.RegisterCreatedObjectUndo(rootInstance, "Create Modular NPC Root");
 
             // v26: Position the root at the computed spawn point BEFORE anything gets parented
