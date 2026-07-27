@@ -20,6 +20,9 @@ MonoBehaviour:
   - ResponseText: I havent heard anything new
     MaleVoiceLine: {fileID: 8300000, guid: 32623f841ddc58c4da1e5040dc8336df, type: 3}
     FemaleVoiceLine: {fileID: 8300000, guid: 9596fdd4e375e3a449b2aaf5eb40ce03, type: 3}
+  - ResponseText: Sorry boss, I haven't heard anything new
+    MaleVoiceLine: {fileID: 8300000, guid: 32623f841ddc58c4da1e5040dc8336df, type: 3}
+    FemaleVoiceLine: {fileID: 8300000, guid: 9596fdd4e375e3a449b2aaf5eb40ce03, type: 3}
   NegativeResponses:
   - ResponseText: I got nothing to say to you
     MaleVoiceLine: {fileID: 8300000, guid: 41dc8db037173b54a9839e52fdabaf2a, type: 3}

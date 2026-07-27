@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82311a8ecae6fe54b8520c695bd861bd, type: 3}
-  m_Name: NPC_Profile_Little_John_639204445342279064
+  m_Name: NPC_Profile_Hamiltin_is_a_Multimillionaire_1_639207794369894230
   m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.Data.NPCArchetypeConfiguration
-  DefaultName: Little John
+  DefaultName: Hamiltin is a Multimillionaire_1
   RigStyle: 0
   BrainStyle: 0
   InteractionPromptText: 'Talk [E]'

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.Events;
 using VContainer;
 using TownsPeople.UI;
 using TownsPeople.Data;
@@ -19,69 +18,9 @@ namespace TownsPeople.GamePlay
     //    player right now" instead of endlessly repeating specific gossip content.
     // 3. The rumor's own RumorDisplayText/VoiceLineAudio, as an always-available fallback if
     //    neither of the above produced anything (e.g. minimal setup with no response arrays).
-    /// <summary>
-    /// Per-NPC configuration for one dialogue menu option: whether it appears at all, an
-    /// optional custom label overriding the default (supports a {NpcName} token, substituted
-    /// with this NPC's actual name at display time), and optional gendered audio played when
-    /// selected.
-    /// </summary>
-    [System.Serializable]
-    public struct DialogueOptionSettings
-    {
-        [Tooltip("If disabled, this option never appears in the dialogue menu for this NPC.")]
-        public bool Enabled;
-
-        [Tooltip("Label shown for this option. Supports a {NpcName} token, replaced with this NPC's actual name.")]
-        public string CustomLabel;
-
-        [Tooltip("Optional. Played when the reacting NPC's Voice Gender is set to Male.")]
-        public AudioClip MaleAudio;
-
-        [Tooltip("Optional. Played when the reacting NPC's Voice Gender is set to Female.")]
-        public AudioClip FemaleAudio;
-
-        /// <summary>Returns the clip matching the requested gender, falling back to the other gender's clip if only one is assigned.</summary>
-        public AudioClip GetVoiceLine(VoiceGender gender)
-        {
-            AudioClip preferred = gender == VoiceGender.Male ? MaleAudio : FemaleAudio;
-            if (preferred != null) return preferred;
-            return gender == VoiceGender.Male ? FemaleAudio : MaleAudio;
-        }
-    }
-
-    /// <summary>
-    /// A fully custom, NPC-authored dialogue option. Wire OnSelected to any method on any
-    /// component directly in the Inspector — no code required per new option. Unlike Greet/
-    /// Rumors, these have no built-in conditional-interactability logic; they're always
-    /// available whenever Enabled.
-    /// </summary>
-    [System.Serializable]
-    public struct CustomDialogueOption
-    {
-        [Tooltip("If disabled, this option never appears.")]
-        public bool Enabled;
-
-        [Tooltip("Text shown for this option in the dialogue menu.")]
-        public string Label;
-
-        [Tooltip("Optional. Played when the reacting NPC's Voice Gender is set to Male.")]
-        public AudioClip MaleAudio;
-
-        [Tooltip("Optional. Played when the reacting NPC's Voice Gender is set to Female.")]
-        public AudioClip FemaleAudio;
-
-        [Tooltip("Invoked when the player selects this option. Wire this to any method on any component.")]
-        public UnityEvent OnSelected;
-
-        /// <summary>Returns the clip matching the requested gender, falling back to the other gender's clip if only one is assigned.</summary>
-        public AudioClip GetVoiceLine(VoiceGender gender)
-        {
-            AudioClip preferred = gender == VoiceGender.Male ? MaleAudio : FemaleAudio;
-            if (preferred != null) return preferred;
-            return gender == VoiceGender.Male ? FemaleAudio : MaleAudio;
-        }
-    }
-
+    //
+    // DialogueOptionSettings and CustomDialogueOption moved to DialogueOptionData.cs — same
+    // namespace, so nothing else in the project needed to change to see them.
     public class NPCGossipMemory : MonoBehaviour
     {
         [Tooltip("Display name for this NPC, used for debug logging and identification.")]
@@ -170,21 +109,22 @@ namespace TownsPeople.GamePlay
         private int _lastPositiveIndex = -1;
         private int _lastNegativeIndex = -1;
 
-        // Caches PeekRumorPreviewText's General-pool result per rumor, keyed alongside
-        // which alignment pool produced it. Without this, RefreshAfterAction() — called roughly once
-        // per second by UpdateGreetCooldownDisplay() while Greet is on cooldown — was re-rolling a
-        // fresh random General-pool response on every single rebuild, which read as the preview text
-        // flickering back and forth (especially visible with a small library, e.g. 2 entries). The
-        // cache is only consulted/updated for the General-pool tier; the Specific-response tier
-        // (_gossipManager.PeekSpecificResponse) and the real, actually-played selection in
-        // PresentRumorInternal are both unaffected and remain exactly as randomized as before.
-        private readonly Dictionary<string, (RumorAlignment Pool, string Text)> _cachedGeneralPoolPreviews =
-            new Dictionary<string, (RumorAlignment, string)>();
-
         // v15: Which known rumor "What do you hear on the streets?" tells next. Cycles
         // through KnownRumors in order, wrapping around — independent of TriggerMode/
         // HasBeenPresented, since the player is explicitly asking, not passively triggering.
         private int _nextRumorToTellIndex = 0;
+
+        // v25 FIX: Caches PeekRumorPreviewText's General-pool result per rumor, keyed alongside
+        // which alignment pool produced it. Without this, RefreshAfterAction() — called roughly
+        // once per second by UpdateGreetCooldownDisplay() while Greet is on cooldown — was
+        // re-rolling a fresh random General-pool response on every single rebuild, which read
+        // as the preview text flickering back and forth (especially visible with a small
+        // library, e.g. 2 entries). The cache is only consulted/updated for the General-pool
+        // tier; the Specific-response tier (_gossipManager.PeekSpecificResponse) and the real,
+        // actually-played selection in PresentRumorInternal are both unaffected and remain
+        // exactly as randomized as before.
+        private readonly Dictionary<string, (RumorAlignment Pool, string Text)> _cachedGeneralPoolPreviews =
+            new Dictionary<string, (RumorAlignment, string)>();
 
         [Inject]
         public void Construct(GossipManager gossipManager, ReputationService reputationService)
@@ -328,10 +268,17 @@ namespace TownsPeople.GamePlay
         /// display for this rumor RIGHT NOW — without any side effects (no counter advance, no
         /// HasBeenPresented change, no audio/animation). Used for the dialogue menu's rumor
         /// list labels, so the preview text matches what clicking will actually produce for
-        /// the Specific-response tier. The General-pool tier's preview may occasionally differ
-        /// from the actual click result (it's a fresh random pick each time, deliberately not
-        /// state-mutating for a mere preview) — only the Specific tier is guaranteed exact,
-        /// which is the common case worth previewing accurately.
+        /// the Specific-response tier.
+        ///
+        /// v25 FIX: The General-pool tier previously re-rolled a fresh random response on
+        /// every call — since RefreshAfterAction() rebuilds the dialogue menu's option list
+        /// roughly once per second while Greet is on cooldown, this caused the previewed text
+        /// to flicker between pool entries. Now cached per rumor, keyed alongside the alignment
+        /// pool that produced it — a repeated peek returns the same text until the player's
+        /// standing actually flips Positive/Negative, at which point it's recomputed once. The
+        /// Specific-response tier and the real, actually-played selection in
+        /// PresentRumorInternal remain exactly as randomized as before; only this preview path
+        /// is now stable.
         /// </summary>
         public string PeekRumorPreviewText(RumorTemplate rumor)
         {
@@ -349,9 +296,6 @@ namespace TownsPeople.GamePlay
             {
                 RumorAlignment fallbackPool = GetPlayerStandingAlignment();
 
-                // v25 FIX: Reuse the cached preview for this rumor as long as the alignment pool
-                // that would produce it hasn't changed — stops the once-per-second RefreshAfterAction
-                // rebuild from re-rolling a new random pick every time.
                 if (_cachedGeneralPoolPreviews.TryGetValue(rumor.RumorID, out (RumorAlignment Pool, string Text) cached)
                     && cached.Pool == fallbackPool)
                 {
