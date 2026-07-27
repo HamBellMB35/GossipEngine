@@ -170,6 +170,17 @@ namespace TownsPeople.GamePlay
         private int _lastPositiveIndex = -1;
         private int _lastNegativeIndex = -1;
 
+        // Caches PeekRumorPreviewText's General-pool result per rumor, keyed alongside
+        // which alignment pool produced it. Without this, RefreshAfterAction() — called roughly once
+        // per second by UpdateGreetCooldownDisplay() while Greet is on cooldown — was re-rolling a
+        // fresh random General-pool response on every single rebuild, which read as the preview text
+        // flickering back and forth (especially visible with a small library, e.g. 2 entries). The
+        // cache is only consulted/updated for the General-pool tier; the Specific-response tier
+        // (_gossipManager.PeekSpecificResponse) and the real, actually-played selection in
+        // PresentRumorInternal are both unaffected and remain exactly as randomized as before.
+        private readonly Dictionary<string, (RumorAlignment Pool, string Text)> _cachedGeneralPoolPreviews =
+            new Dictionary<string, (RumorAlignment, string)>();
+
         // v15: Which known rumor "What do you hear on the streets?" tells next. Cycles
         // through KnownRumors in order, wrapping around — independent of TriggerMode/
         // HasBeenPresented, since the player is explicitly asking, not passively triggering.
@@ -327,25 +338,36 @@ namespace TownsPeople.GamePlay
             if (rumor == null) return null;
 
             RumorResponse? specificResponse = _gossipManager?.PeekSpecificResponse(rumor);
-            RumorResponse? chosenResponse;
-
             if (specificResponse != null)
             {
-                chosenResponse = specificResponse;
-            }
-            else if (_responseLibrary != null)
-            {
-                RumorAlignment fallbackPool = GetPlayerStandingAlignment();
-                chosenResponse = _responseLibrary.GetRandomResponse(fallbackPool);
-            }
-            else
-            {
-                chosenResponse = null;
+                return !string.IsNullOrEmpty(specificResponse.Value.ResponseText)
+                    ? specificResponse.Value.ResponseText
+                    : rumor.RumorDisplayText;
             }
 
-            return (chosenResponse.HasValue && !string.IsNullOrEmpty(chosenResponse.Value.ResponseText))
-                ? chosenResponse.Value.ResponseText
-                : rumor.RumorDisplayText;
+            if (_responseLibrary != null)
+            {
+                RumorAlignment fallbackPool = GetPlayerStandingAlignment();
+
+                // v25 FIX: Reuse the cached preview for this rumor as long as the alignment pool
+                // that would produce it hasn't changed — stops the once-per-second RefreshAfterAction
+                // rebuild from re-rolling a new random pick every time.
+                if (_cachedGeneralPoolPreviews.TryGetValue(rumor.RumorID, out (RumorAlignment Pool, string Text) cached)
+                    && cached.Pool == fallbackPool)
+                {
+                    return !string.IsNullOrEmpty(cached.Text) ? cached.Text : rumor.RumorDisplayText;
+                }
+
+                RumorResponse? freshResponse = _responseLibrary.GetRandomResponse(fallbackPool);
+                string freshText = (freshResponse.HasValue && !string.IsNullOrEmpty(freshResponse.Value.ResponseText))
+                    ? freshResponse.Value.ResponseText
+                    : rumor.RumorDisplayText;
+
+                _cachedGeneralPoolPreviews[rumor.RumorID] = (fallbackPool, freshText);
+                return freshText;
+            }
+
+            return rumor.RumorDisplayText;
         }
 
         public string PresentRumorForPopup(RumorTemplate rumor)
