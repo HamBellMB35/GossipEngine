@@ -14,12 +14,21 @@ namespace TownsPeople.CustomEditor
     /// separate Inspector block on an NPC. Select any NPC (root or a child of one) and this
     /// window auto-targets it, grouping its components into CORE (Identity & State,
     /// Perception, Presentation, Infrastructure) and ADD-ONS (Optional Behavior Overrides,
-    /// Role-Specific Add-ons) sections — click a category button to see only that section's
-    /// components. Every field already available in the normal Inspector remains available
-    /// here (each card renders via Editor.CreateEditor(component).OnInspectorGUI(), the same
-    /// mechanism Unity's own Inspector uses) — this changes how it's organized, never what's
-    /// exposed, and automatically picks up any future fields added to these components without
-    /// needing this window updated.
+    /// Role-Specific Add-ons, Locomotion) sections — click a category button to see only that
+    /// section's components. Every field already available in the normal Inspector remains
+    /// available here (each card renders via Editor.CreateEditor(component).OnInspectorGUI(),
+    /// the same mechanism Unity's own Inspector uses) — this changes how it's organized, never
+    /// what's exposed, and automatically picks up any future fields added to these components
+    /// without needing this window updated. Category MEMBERSHIP (which component types belong
+    /// to which button) is an explicit list in BuildCategoryMaps() — not auto-discovered — so a
+    /// newly added component type needs a one-line addition there to appear in the panel at
+    /// all.
+    ///
+    /// Note: LocomotionRoute itself is never rendered inline here (it lives on its own
+    /// standalone GameObject and can be shared by multiple NPCs, so showing its full editor
+    /// inside one NPC's panel would be misleading) — but the Locomotion category includes a
+    /// "Show Locomotion Route" quick-access button that selects/pings/frames the currently
+    /// assigned route in the Scene view, via DrawLocomotionRouteButton().
     ///
     /// Visual style (rounded cards/buttons, editable colors) comes from
     /// TownsPeopleEditorTheme — kept separate so the same look can be shared across other
@@ -92,6 +101,7 @@ namespace TownsPeople.CustomEditor
             {
                 ("Optional Behavior Overrides", new[] { typeof(NPCWitnessReaction), typeof(NPCRumorIndicator) }),
                 ("Role-Specific Add-ons", roleSpecificTypes.ToArray()),
+                ("Locomotion", new[] { typeof(LocomotionAgent) }),
             };
         }
 
@@ -99,8 +109,8 @@ namespace TownsPeople.CustomEditor
         /// If the current Selection is (or is a child of) an NPC — detected by the presence of
         /// NPCGossipMemory or NPCGreetingResponder anywhere in its hierarchy — auto-targets
         /// this window at that NPC's root. Leaves the target unchanged if the selection doesn't
-        /// look like an NPC, so selecting something unrelated (e.g. a UI element while tuning
-        /// this NPC) doesn't lose your place.
+        /// look like an NPC, so selecting something unrelated (e.g. a LocomotionRoute object
+        /// via the "Show Locomotion Route" button below) doesn't lose your place.
         /// </summary>
         private void AutoDetectTargetFromSelection()
         {
@@ -224,6 +234,12 @@ namespace TownsPeople.CustomEditor
 
             if (selectedIndex < 0 || selectedIndex >= categories.Length) return;
 
+            bool isLocomotionCategory = _topSection == TopSection.AddOns && categories[selectedIndex].Label == "Locomotion";
+            if (isLocomotionCategory)
+            {
+                DrawLocomotionRouteButton();
+            }
+
             Type[] types = categories[selectedIndex].Types;
             List<Component> found = new List<Component>();
 
@@ -243,6 +259,47 @@ namespace TownsPeople.CustomEditor
             {
                 DrawComponentCard(component);
             }
+        }
+
+        /// <summary>
+        /// Locomotion-only extra: a quick-access button to jump to this NPC's assigned
+        /// LocomotionRoute, which lives on its own separate GameObject and is therefore never
+        /// shown inline as a normal component card here (a route can be shared by many NPCs,
+        /// so rendering its full editor inside one NPC's panel would be misleading). Clicking
+        /// selects, pings, and frames the Scene view on that route object.
+        /// </summary>
+        private void DrawLocomotionRouteButton()
+        {
+            LocomotionAgent agent = _targetNpc.GetComponentInChildren<LocomotionAgent>();
+
+            GUIStyle cardStyle = TownsPeopleEditorTheme.CreateCardStyle(TownsPeopleEditorTheme.Panel);
+            EditorGUILayout.BeginVertical(cardStyle);
+
+            if (agent == null)
+            {
+                EditorGUILayout.HelpBox("This NPC has no LocomotionAgent yet.", MessageType.None);
+            }
+            else if (agent.AssignedRoute == null)
+            {
+                EditorGUILayout.HelpBox("No Locomotion Route assigned to this NPC yet — assign one on LocomotionAgent below.", MessageType.None);
+            }
+            else
+            {
+                LocomotionRoute route = agent.AssignedRoute;
+                EditorGUILayout.LabelField("Assigned Route", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(route.gameObject.name, EditorStyles.miniLabel);
+                EditorGUILayout.Space(4);
+
+                if (GUILayout.Button("Show Locomotion Route", GUILayout.Height(28)))
+                {
+                    Selection.activeGameObject = route.gameObject;
+                    EditorGUIUtility.PingObject(route.gameObject);
+                    SceneView.lastActiveSceneView?.FrameSelected();
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(6);
         }
 
         private void DrawComponentCard(Component component)
