@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TownsPeople.Data;
@@ -7,8 +7,26 @@ using TownsPeople.UI;
 namespace TownsPeople.GamePlay
 {
     // v6: The [E] prompt now fades in/out via CanvasGroupFader instead of snapping alpha
-    // instantly — matching NPCSpeechBubble's existing fade behavior. Fade durations are
+    // instantly ï¿½ matching NPCSpeechBubble's existing fade behavior. Fade durations are
     // editable per-NPC on the CanvasGroupFader component itself (Fade In/Out Duration).
+    //
+    // v7: Locomotion <-> Interaction integration. Resolves an OPTIONAL INpcMovementController
+    // (currently implemented only by LocomotionAgent) via plain GetComponent<T>() ï¿½ no
+    // reflection needed, since the interface itself lives in Core. Every reference is null-safe:
+    // an NPC without Locomotion behaves exactly as it did before this version existed.
+    // - While IsRunning is true, this NPC is not interactable at all: no [E] prompt, no
+    //   Auto-Proximity rumor trigger, no response to [E] being pressed. Running NPCs must never
+    //   be stopped mid-dash by an interaction.
+    // - At the moment ANY interaction begins (dialogue menu, vendor/quest hijack, ambient
+    //   greeting, or the oldest scripted-dialogue fallback), PauseForInteraction() halts
+    //   movement and NPCAnimationBridge.PlayIdleForInteraction() swaps this NPC onto the same
+    //   idle pool a non-Locomotion NPC already uses ï¿½ "displaying all the animations and
+    //   behaviours a non-Locomotion NPC would display," exactly as specified.
+    // - The moment that interaction ends ï¿½ dialogue closed OR the player walks away ï¿½
+    //   ResumeAfterInteraction() and NPCAnimationBridge.ReleaseReactionOverride() run together,
+    //   at the START of InteractionCooldownSequence() (not gated behind the cooldown wait,
+    //   which exists only to prevent E-spam, not to delay movement resumption).
+
 
     public class NPCProximityGossip : MonoBehaviour
     {
@@ -38,6 +56,10 @@ namespace TownsPeople.GamePlay
         private NPCReputationOpinion _reputationOpinion;
         private TownsPeople.UI.NPCNameplate _nameplate;
         private AudioSource _audioSource;
+        // v7: OPTIONAL â€” null on any NPC without a component implementing INpcMovementController
+        // (i.e. no Locomotion add-on, or Locomotion not attached to this specific NPC). Every
+        // usage below is null-conditional (?.) so behavior is unchanged for those NPCs.
+        private INpcMovementController _movementController;
 
         private void Awake()
         {
@@ -48,6 +70,10 @@ namespace TownsPeople.GamePlay
             _reputationOpinion = GetComponent<NPCReputationOpinion>();
             _nameplate = GetComponent<TownsPeople.UI.NPCNameplate>();
             _audioSource = GetComponent<AudioSource>();
+            // v7: Plain interface lookup â€” no reflection required, since INpcMovementController
+            // is defined in Core. Resolves LocomotionAgent automatically if present, without
+            // this script ever referencing that (or any future movement add-on's) concrete type.
+            _movementController = GetComponent<INpcMovementController>();
         }
 
         private void Start()
@@ -61,6 +87,13 @@ namespace TownsPeople.GamePlay
 
             _isPlayerInZone = true;
 
+            // v7: A running NPC is not interactable at all â€” no Auto-Proximity trigger, no [E]
+            // prompt. Bail out entirely before either check below runs.
+            if (_movementController != null && _movementController.IsRunning)
+            {
+                return;
+            }
+
             RuntimeRumorState autoRumor = _gossipMemory != null
                 ? _gossipMemory.GetNextRumorToShare(RumorTriggerMode.AutoProximity)
                 : null;
@@ -68,7 +101,7 @@ namespace TownsPeople.GamePlay
             if (autoRumor != null)
             {
                 _gossipMemory.PresentRumor(autoRumor.SourceTemplate);
-                return; // Skip showing the [E] prompt — nothing further required from the player.
+                return; // Skip showing the [E] prompt ï¿½ nothing further required from the player.
             }
 
             if (!_isOnCooldown)
@@ -85,7 +118,7 @@ namespace TownsPeople.GamePlay
 
             interactionPromptFader?.Hide();
 
-            // v9: Force-close the dialogue menu if it's currently open for THIS NPC — walking
+            // v9: Force-close the dialogue menu if it's currently open for THIS NPC ï¿½ walking
             // away now has the same full cleanup effect as clicking Leave. Close() itself
             // handles hiding this NPC's speech bubble.
             if (DialogueMenuUI.Instance != null && _gossipMemory != null && DialogueMenuUI.Instance.IsOpenFor(_gossipMemory))
@@ -94,7 +127,7 @@ namespace TownsPeople.GamePlay
             }
             else
             {
-                // Menu wasn't open — still make sure a lingering speech bubble (e.g. from an
+                // Menu wasn't open ï¿½ still make sure a lingering speech bubble (e.g. from an
                 // Auto-Proximity greeting or the old ScriptedDialogues fallback) fades out now
                 // instead of waiting out its own internal timer.
                 speechBubble?.HideImmediately();
@@ -109,10 +142,39 @@ namespace TownsPeople.GamePlay
             }
         }
 
+        // v7: Tracks the running state as of last frame, so the [E] prompt can react to a
+        // Locomotion NPC transitioning into/out of a Run leg WHILE the player is already
+        // standing in its trigger zone (OnTriggerEnter alone can't catch this, since it only
+        // fires once, on entry).
+        private bool _wasRunningLastFrame;
+
         private void Update()
         {
             if (Keyboard.current == null) return;
 
+            // v7: Reactively show/hide the prompt as this NPC starts or stops running, for as
+            // long as the player remains in the zone. Skipped entirely for NPCs with no
+            // movement controller â€” zero extra cost for the common non-Locomotion case.
+            if (_movementController != null && _isPlayerInZone && !_isOnCooldown)
+            {
+                bool isRunningNow = _movementController.IsRunning;
+                if (isRunningNow != _wasRunningLastFrame)
+                {
+                    if (isRunningNow)
+                    {
+                        interactionPromptFader?.Hide();
+                    }
+                    else
+                    {
+                        interactionPromptFader?.Show();
+                    }
+                    _wasRunningLastFrame = isRunningNow;
+                }
+            }
+
+            // v7: Extra safety net alongside the OnTriggerEnter/Update guard above â€” even if the
+            // prompt's fade hasn't fully caught up yet, an actual [E] press while running is
+            // ignored outright inside ExecuteInteraction() itself.
             if (_isPlayerInZone && !_isOnCooldown && Keyboard.current.eKey.wasPressedThisFrame)
             {
                 ExecuteInteraction();
@@ -123,9 +185,13 @@ namespace TownsPeople.GamePlay
         {
             if (_isOnCooldown || _isDeferringInteraction) return;
 
+            // v7: Running NPCs are never interactable, full stop â€” must never be yanked out of
+            // a dash by the player pressing [E].
+            if (_movementController != null && _movementController.IsRunning) return;
+
             // v10: If this NPC is currently mid-audio (e.g. reacting to a just-witnessed
             // PlayerDeedBroadcaster event), defer the interaction instead of immediately
-            // playing new audio over it — Unity's AudioSource.Play() always cuts off whatever
+            // playing new audio over it ï¿½ Unity's AudioSource.Play() always cuts off whatever
             // is currently playing, which previously caused witness-reaction audio to get cut
             // off by the interaction's own greeting audio if both fired close together. This
             // is intentionally one-directional: a NEW witness reaction is still allowed to
@@ -153,7 +219,7 @@ namespace TownsPeople.GamePlay
 
         private void ExecuteInteractionImmediate()
         {
-            // v11: Click sound for [E] press itself — covers every interaction path
+            // v11: Click sound for [E] press itself ï¿½ covers every interaction path
             // uniformly (vendor hijack, dialogue menu opening, greeting responder, old
             // fallback). No-ops silently if no click sound is assigned.
             TownsPeople.UI.DialogueMenuUI.Instance?.PlayClickSound();
@@ -163,12 +229,22 @@ namespace TownsPeople.GamePlay
             // v10: Clear any lingering nameplate/bubble the instant the player actually
             // interacts, instead of stale proximity-driven UI overlapping with whatever comes
             // next (menu, vendor, greeting). Nameplate stays suppressed for the whole
-            // interaction — see InteractionCooldownSequence, which un-suppresses it once the
+            // interaction ï¿½ see InteractionCooldownSequence, which un-suppresses it once the
             // interaction actually ends (including once the dialogue menu closes).
             _nameplate?.SetSuppressed(true);
             speechBubble?.HideImmediately();
             _gossipMemory?.HideSpeechBubble();
             _greetingResponder?.HideSpeechBubble();
+
+            // v7: If this NPC has Locomotion, halt its movement and swap it onto the same idle
+            // pool a non-Locomotion NPC already displays â€” "displaying all the animations and
+            // behaviours a non-Locomotion NPC would display," for the whole interaction. No-op
+            // for any NPC without Locomotion, since _movementController is null there.
+            if (_movementController != null)
+            {
+                _movementController.PauseForInteraction();
+                _animationBridge?.PlayIdleForInteraction();
+            }
 
             IInteractionExtension extension = _addonRegistry != null
                 ? _addonRegistry.GetActiveInteractionExtension()
@@ -176,7 +252,7 @@ namespace TownsPeople.GamePlay
 
             if (extension != null && extension.OnExtendInteraction())
             {
-                // Vendor/Quest hijack behavior is UNCHANGED — instant, no menu, starts
+                // Vendor/Quest hijack behavior is UNCHANGED ï¿½ instant, no menu, starts
                 // cooldown immediately, exactly as before.
                 StartCoroutine(InteractionCooldownSequence());
                 return;
@@ -190,11 +266,11 @@ namespace TownsPeople.GamePlay
             // v8: Common NPCs (have NPCGossipMemory) now open the dialogue menu instead of
             // auto-presenting a single response. The previous "pending Manual-Talk rumor
             // auto-presents immediately" behavior is folded into the menu's "What do you hear
-            // on the streets?" option instead — the player now asks for it explicitly.
+            // on the streets?" option instead ï¿½ the player now asks for it explicitly.
             if (_gossipMemory != null)
             {
                 OpenDialogueMenu();
-                return; // Cooldown starts when the menu closes, not here — see OnDialogueMenuClosed.
+                return; // Cooldown starts when the menu closes, not here ï¿½ see OnDialogueMenuClosed.
             }
 
             // Non-Dialogue NPCs: unchanged, single reputation-driven greeting, no menu.
@@ -234,7 +310,7 @@ namespace TownsPeople.GamePlay
         {
             if (DialogueMenuUI.Instance == null)
             {
-                Debug.LogWarning("<color=orange>[NPCProximityGossip]</color> No DialogueMenuUI found in the scene — generate one via Tools > NPC Creator > Generate Dialogue Menu UI.", this);
+                Debug.LogWarning("<color=orange>[NPCProximityGossip]</color> No DialogueMenuUI found in the scene ï¿½ generate one via Tools > NPC Creator > Generate Dialogue Menu UI.", this);
                 StartCoroutine(InteractionCooldownSequence());
                 return;
             }
@@ -250,9 +326,19 @@ namespace TownsPeople.GamePlay
         private IEnumerator InteractionCooldownSequence()
         {
             // v10: Un-suppress the nameplate immediately once the interaction ends (menu
-            // closed, vendor hijack finished, etc.) — no reason to keep it hidden through the
+            // closed, vendor hijack finished, etc.) ï¿½ no reason to keep it hidden through the
             // whole cooldown wait too.
             _nameplate?.SetSuppressed(false);
+
+            // v7: Resume movement and release the Reactions-layer override IMMEDIATELY ï¿½
+            // deliberately not gated behind the cooldown wait below, which exists only to
+            // prevent E-spamming a fresh interaction, not to delay the NPC resuming its walk.
+            // No-op for any NPC without Locomotion.
+            if (_movementController != null)
+            {
+                _movementController.ResumeAfterInteraction();
+                _animationBridge?.ReleaseReactionOverride();
+            }
 
             _isOnCooldown = true;
             yield return new WaitForSeconds(interactionCooldownDuration);

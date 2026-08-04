@@ -1,10 +1,10 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using UnityEngine.AI;
 
 namespace TownsPeople.GamePlay
 {
     /// <summary>
-    /// TEMPORARY DIAGNOSTIC TOOL — not part of the shipped Locomotion add-on. Displays live
+    /// TEMPORARY DIAGNOSTIC TOOL ï¿½ not part of the shipped Locomotion add-on. Displays live
     /// NavMeshAgent/Animator/root-motion values on screen during Play mode, to pin down
     /// exactly what's happening rather than reasoning about it blind. Delete once locomotion
     /// is confirmed working correctly.
@@ -43,7 +43,8 @@ namespace TownsPeople.GamePlay
                 $"agent.pathPending: {_agent.pathPending}\n" +
                 $"agent.remainingDistance: {_agent.remainingDistance:F2}\n" +
                 $"agent.updatePosition: {_agent.updatePosition}\n" +
-                $"IsMoving: {_locomotionAgent.IsMoving}   IsPaused: {_locomotionAgent.IsPaused}\n";
+                $"IsMoving: {_locomotionAgent.IsMoving}   IsPaused: {_locomotionAgent.IsPaused}\n" +
+                $"CurrentLegWillStop: {_locomotionAgent.CurrentLegWillStop}\n";
 
             if (_animator != null)
             {
@@ -65,7 +66,7 @@ namespace TownsPeople.GamePlay
 
         /// <summary>
         /// Casts straight down from well above the NPC to find the actual floor collider's
-        /// height at this position — the ground truth to compare nextPosition.y against.
+        /// height at this position ï¿½ the ground truth to compare nextPosition.y against.
         /// </summary>
         private float GetGroundRaycastY()
         {

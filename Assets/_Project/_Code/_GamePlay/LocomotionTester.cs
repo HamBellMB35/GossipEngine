@@ -1,9 +1,9 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace TownsPeople.GamePlay
 {
     /// <summary>
-    /// TEMPORARY TEST HARNESS � not part of the shipped Locomotion add-on. Since Phase 2's
+    /// TEMPORARY TEST HARNESS � not part of the shipped Locomotion add-on. Since Phase 2's
     /// behavior components (WandererBehavior, etc.) don't exist yet, nothing currently calls
     /// LocomotionAgent.MoveTo() on its own. This component does that manually: walks the
     /// assigned LocomotionRoute in a loop, advancing to the next waypoint each time
@@ -75,7 +75,10 @@ namespace TownsPeople.GamePlay
         private void MoveToCurrentWaypoint()
         {
             LocomotionWaypoint waypoint = _route.GetWaypoint(_currentWaypointIndex);
-            _agent.MoveTo(waypoint.Position, waypoint.ArrivalSpeedTier);
+            // v4: Switched to the LocomotionWaypoint overload — passes the whole waypoint
+            // through instead of just its Position, so LocomotionAgent can resolve whether this
+            // visit should actually stop (Point of Interest) or flow through (plain waypoint).
+            _agent.MoveTo(waypoint, waypoint.ArrivalSpeedTier);
             Debug.Log($"<color=cyan>[LocomotionTester]</color> '{gameObject.name}' heading to waypoint {_currentWaypointIndex} ({waypoint.ArrivalSpeedTier}).");
         }
 

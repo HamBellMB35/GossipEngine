@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
@@ -19,8 +20,67 @@ namespace TownsPeople.GamePlay
     /// on this component in any way. Delete it off an NPC and every other system keeps working
     /// exactly as before — the NPC simply stands still.
     /// </summary>
+    // v2: Implements INpcMovementController (a Core-defined interface) so core interaction code
+    // (NPCProximityGossip) can pause/resume this NPC's movement and check whether it's
+    // currently running, without Core taking any compile-time dependency on this add-on.
+    // Pause/Resume forward straight to the existing Pause()/Resume() methods — no new movement
+    // logic, just a Core-facing contract wrapped around what already existed. IsRunning tracks
+    // a new _currentSpeedTier field, set alongside _currentLegTargetSpeed in MoveTo().
+    //
+    // v3: Turning + Stopping animations, for a more natural-feeling walk/run.
+    // - TURNING: new Turn float parameter, computed every frame from the NavMeshAgent's
+    //   velocity in this NPC's own LOCAL space (the standard technique used by most Unity
+    //   third-person locomotion systems) — non-zero any time the agent's actual velocity points
+    //   somewhat sideways relative to current facing, i.e. exactly the window where NavMeshAgent's
+    //   own rotation (turning to face the desired direction) hasn't fully caught up yet. Intended
+    //   to drive a 2D Freeform Blend Tree (Speed × Turn) on the Animator Controller side — see
+    //   the Editor setup checklist provided alongside this script.
+    // - STOPPING: a discrete, ONE-SHOT Stop animation (not part of the blend tree — a "plant the
+    //   foot and stop" clip is inherently transient, not a sustained pose), triggered via the
+    //   existing NPCAnimationBridge.SetAnimationState() the moment this NPC arrives at a
+    //   waypoint from a meaningful speed. Reuses NPCAnimationBridge's Reactions-layer masking
+    //   entirely as-is — inherits the v17 pause/resume-aware RevertToRestingState() behavior for
+    //   free, no new plumbing required there. Skipped if arrival speed was already near zero
+    //   (nothing dramatic to punctuate) or if no Stop State Name is configured.
+    // v3.2: Smoothed both the physical arrival (ComputeArrivalSpeedMultiplier, an ease-in/out
+    // ramp toward 0 as the NPC nears its destination) and the visual blend (damped SetFloat for
+    // Speed/Turn instead of the instant overload) — REVISED in v4, see below.
+    //
+    // v4 FIX: v3.2's arrival deceleration applied to EVERY waypoint, including plain path
+    // corners that were only ever meant to be flowed through — every single stop along a route
+    // now visibly slowed down, which reads as worse than the original instant-halt behavior for
+    // any waypoint that isn't actually meant to be a stopping point. Fixed by making
+    // deceleration (and the Stop animation) conditional on the waypoint actually being a Point
+    // of Interest (see LocomotionWaypoint.IsPointOfInterest) — a plain waypoint now flows
+    // through at full speed with zero deceleration, exactly like before v3.2 ever existed. Added
+    // a MoveTo(LocomotionWaypoint, LocomotionSpeedTier) overload that resolves this decision
+    // (including rolling RandomChance fresh on every visit); the original
+    // MoveTo(Vector3, LocomotionSpeedTier) overload is preserved for raw-destination use and
+    // always behaves as a pass-through leg. Full POI behavior (lingering, facing a direction,
+    // etc.) is intentionally NOT built here — that's a separate, future mechanic layered on top
+    // of these same fields; this version only decides stop-or-flow-through.
+    //
+    // v5: The stop decision moved from IsPointOfInterest to the pre-existing LingerDuration
+    // field instead (0 = flow through, > 0 = decelerate/stop/wait) — simpler, and reuses a field
+    // that already existed for exactly this purpose. IsPointOfInterest/StopBehavior/StopChance
+    // remain in LocomotionWaypoint untouched, for the separate future POI mechanic — they no
+    // longer drive stopping themselves. Also: arrival now actually WAITS for LingerDuration
+    // seconds (via a coroutine) before firing OnArrivedAtDestination — previously nothing waited
+    // at all, so this field had never had any real effect despite existing since Phase 1.
+    //
+    // v6 FIX: The Editor-side dedup added to fix v2's threshold-collapse bug (2D trees) fixed
+    // the multiplier's ACCURACY but at the cost of silently dropping every Turn-variant pose
+    // sharing a Speed value with another pose — not acceptable; every pose needs its own real
+    // multiplier. Replaced the entire mechanism: instead of interpolating a single value along
+    // the Speed axis, ComputeLiveClipMultiplier() reads Unity's own live blend weights
+    // (Animator.GetCurrentAnimatorClipInfo) each frame, finds whichever clip is CURRENTLY
+    // dominant in the blend, and uses THAT clip's own configured Multiplier directly. This is
+    // blend-tree-dimensionality-agnostic (works the same for 1D, 2D, or any future N-D setup)
+    // and every pose keeps its own independent value — nothing collapsed, nothing approximated.
+    // LocomotionAgentEditor's sync no longer deduplicates by Speed — every Blend Tree child gets
+    // its own row again.
     [RequireComponent(typeof(NavMeshAgent))]
-    public class LocomotionAgent : MonoBehaviour
+    public class LocomotionAgent : MonoBehaviour, INpcMovementController
     {
         [Header("Per-NPC Speed Tiers")]
         [Tooltip("Exact movement speed (world units/sec) this NPC uses when a waypoint's Arrival Speed Tier is Walk. Also the 0.5 threshold for Blend Tree pose selection.")]
@@ -37,16 +97,31 @@ namespace TownsPeople.GamePlay
         [AnimatorParameterName(nameof(_animator), AnimatorControllerParameterType.Float)]
         [SerializeField] private string _speedParameterName = "Speed";
 
+        [Tooltip("v3: Float parameter driving how sharply this NPC is CURRENTLY turning (-1 = full left, 0 = straight, 1 = full right), computed every frame from the NavMeshAgent's velocity in local space. Intended as the second axis (alongside Speed) of a 2D Freeform Blend Tree, blending in Turn Left/Right locomotion cycles. Leave empty to disable — the Speed-only 1D blend keeps working exactly as before.")]
+        [AnimatorParameterName(nameof(_animator), AnimatorControllerParameterType.Float)]
+        [SerializeField] private string _turnParameterName = "Turn";
+
+        [Header("Stop Animation")]
+        [Tooltip("v3: Name of a discrete, one-shot Stop animation state, played via NPCAnimationBridge.SetAnimationState() the moment this NPC arrives at a waypoint from a meaningful speed. Leave empty to disable — arrival will just settle the blend tree back to Idle with no dedicated stop flourish, the pre-v3 behavior.")]
+        [AnimatorStateName(nameof(_animator))]
+        [SerializeField] private string _stopStateName = "";
+
+        [Tooltip("v3: Minimum normalized speed (0 = idle, 0.5 = Walk Speed, 1 = Run Speed) this NPC must have been moving at, at the exact moment it arrives, for the Stop animation to play. Arriving slower than this plays no Stop flourish — there's nothing dramatic to punctuate.")]
+        [SerializeField, Range(0f, 1f)] private float _stopAnimationMinNormalizedSpeed = 0.3f;
+
         [Serializable]
         public struct PosePlaybackRate
         {
             public string MotionName;
+            // v6: Display-only now for a 2D tree (no longer drives interpolation — see
+            // ComputeLiveClipMultiplier()). Still the real interpolation key for a 1D tree, and
+            // still useful as an at-a-glance Speed-axis reference either way.
             public float Threshold;
             public float Multiplier;
         }
 
         [Header("Per-Pose Playback Rate (State Speed Multiplier)")]
-        [Tooltip("Synced from a selected Blend Tree via this component's custom Inspector (Blend Tree section) — one entry per motion in that tree, in Threshold order. Edit each Multiplier directly there. Only meaningful if the SAME tree driving this NPC's Speed parameter was selected — the runtime interpolation below is based on that tree's live blend position.")]
+        [Tooltip("v6: Synced from a selected Blend Tree via this component's custom Inspector (Blend Tree section) — ONE entry per motion in the tree, no motions collapsed or dropped (including Turn variants sharing a Speed value on a 2D tree). Edit each Multiplier directly there. At runtime, whichever clip is CURRENTLY dominant in the live blend uses its own Multiplier — see ComputeLiveClipMultiplier().")]
         [SerializeField] private List<PosePlaybackRate> _posePlaybackRates = new List<PosePlaybackRate>();
 
         public List<PosePlaybackRate> PosePlaybackRates => _posePlaybackRates;
@@ -54,6 +129,20 @@ namespace TownsPeople.GamePlay
         [Tooltip("Float parameter bound to the Locomotion state's Speed > Multiplier > Parameter field in the Animator Controller. Leave empty to disable this feature entirely.")]
         [AnimatorParameterName(nameof(_animator), AnimatorControllerParameterType.Float)]
         [SerializeField] private string _stateSpeedMultiplierParameterName = "";
+
+        [Tooltip("v6: Which Animator layer this NPC's Locomotion state lives on — used only to read live blend weights for the Speed Multiplier feature (GetCurrentAnimatorClipInfo). Base Layer (0) matches this project's standard NPC_GossipAnimator convention; change only if your own Controller places Locomotion on a different layer.")]
+        [SerializeField] private int _locomotionLayerIndex = 0;
+
+        [Header("Animation Smoothing")]
+        [Tooltip("v3.2: How long (seconds) the Speed and Turn Animator parameters take to smoothly ease toward their actual target values, instead of snapping instantly every frame. This is what makes blend tree transitions (including arriving/stopping) feel smooth rather than rough. Higher = smoother but more lag between real movement and the animation catching up. 0 = instant, the pre-v3.2 behavior.")]
+        [SerializeField, Range(0f, 0.5f)] private float _animatorParameterDampTime = 0.15f;
+
+        [Header("Arrival Deceleration")]
+        [Tooltip("v3.2: If enabled, this NPC smoothly slows its TARGET speed down as it approaches its destination, instead of moving at full speed right up until arrival. Deliberately separate from NavMeshAgent's own Auto Braking (kept OFF — it would fight this and the existing Turn Anticipation slowdown, double-applying deceleration unpredictably).")]
+        [SerializeField] private bool _decelerateOnArrival = true;
+
+        [Tooltip("v3.2: How far (world units) before the destination this NPC starts smoothly decelerating. Larger = a longer, gentler slowdown; smaller = a shorter, more sudden one.")]
+        [SerializeField] private float _arrivalDecelerationDistance = 1.5f;
 
         [Header("Avoidance")]
         [Tooltip("Lower values yield right-of-way to NPCs with higher priority (lower number) when paths conflict — Unity's built-in NavMesh local avoidance handles the actual steering/waiting/veering. Range 0-99.")]
@@ -98,16 +187,45 @@ namespace TownsPeople.GamePlay
         public LocomotionRoute AssignedRoute => _assignedRoute;
 
         private NavMeshAgent _agent;
+        // v3: Resolved alongside the Animator in Awake() — used solely to trigger the discrete
+        // Stop animation on arrival. NPCAnimationBridge is Core; a direct reference here follows
+        // the exact same established direction as ResolveAnimatorIfNeeded() below.
+        private NPCAnimationBridge _animationBridge;
         private float _currentLegTargetSpeed;
+        // v2: Tracks which speed tier the CURRENT leg was assigned (set in MoveTo(), alongside
+        // _currentLegTargetSpeed). Used by IsRunning below — separate from the numeric target
+        // speed since two different NPCs' Walk/Run values could otherwise be ambiguous to
+        // compare against.
+        private LocomotionSpeedTier _currentSpeedTier;
         private bool _isMoving;
         private bool _hasArrivedThisLeg;
         private float _currentEffectiveSpeed;
         private Vector3 _smoothedAgentVelocity;
+        // v3: The most recently computed normalized speed (0/0.5/1 piecewise, same scale as the
+        // Speed parameter) — captured here so the arrival check can know how fast this NPC was
+        // actually moving at the exact moment it stopped, without recomputing it separately.
+        private float _lastNormalizedSpeed;
+        // v5: Whether the CURRENT leg should decelerate/stop on arrival — resolved once, when
+        // the leg begins, from waypoint.LingerDuration > 0 (see the MoveTo(LocomotionWaypoint, ...)
+        // overload below). False for every leg started via the raw-destination
+        // MoveTo(Vector3, ...) overload.
+        private bool _currentLegShouldStop;
+        // v5: How long (seconds) to actually WAIT once stopped, before firing
+        // OnArrivedAtDestination — 0 for any leg that doesn't stop at all.
+        private float _currentLegLingerDuration;
+        // v5: The currently-running linger wait, if any — cancelled by Stop() or a new
+        // BeginLeg(), so a pending linger can never fire OnArrivedAtDestination after this NPC
+        // has already been redirected elsewhere.
+        private Coroutine _lingerCoroutine;
 
         public event Action OnArrivedAtDestination;
 
         public bool IsMoving => _isMoving;
         public bool IsPaused => _agent.isStopped;
+        // v5: Renamed from CurrentLegIsPointOfInterestStop (v4) — the stop decision is now
+        // driven by LingerDuration, not IsPointOfInterest, so the old name no longer described
+        // what this actually reflects. True the instant this NPC has stopped and is lingering.
+        public bool CurrentLegWillStop => _currentLegShouldStop;
 
         private void Awake()
         {
@@ -115,6 +233,8 @@ namespace TownsPeople.GamePlay
             _agent.avoidancePriority = _avoidancePriority;
 
             ResolveAnimatorIfNeeded();
+            // v3: Resolved once here — used only by TryPlayStopAnimation() on arrival.
+            _animationBridge = GetComponent<NPCAnimationBridge>();
 
             if (_agent.obstacleAvoidanceType == ObstacleAvoidanceType.NoObstacleAvoidance)
             {
@@ -151,9 +271,47 @@ namespace TownsPeople.GamePlay
             if (_animator == null) _animator = GetComponentInChildren<Animator>();
         }
 
+        /// <summary>
+        /// v4: Raw-destination overload — always begins a PASS-THROUGH leg (no deceleration, no
+        /// Stop flourish, no linger wait on arrival), regardless of what's actually at that
+        /// position. Use the LocomotionWaypoint overload below for linger-aware behavior.
+        /// </summary>
         public void MoveTo(Vector3 destination, LocomotionSpeedTier speedTier)
         {
+            BeginLeg(destination, speedTier, lingerDuration: 0f);
+        }
+
+        /// <summary>
+        /// v5: Waypoint-aware overload — reads the waypoint's own LingerDuration directly
+        /// (0 = flow through, exactly like a plain path corner; greater than 0 = decelerate,
+        /// stop, wait that long, then continue). This is what LocomotionTester (and any future
+        /// behavior driving a LocomotionRoute) should call.
+        /// </summary>
+        public void MoveTo(LocomotionWaypoint waypoint, LocomotionSpeedTier speedTier)
+        {
+            float lingerDuration = waypoint != null ? waypoint.LingerDuration : 0f;
+            BeginLeg(waypoint.Position, speedTier, lingerDuration);
+        }
+
+        private void BeginLeg(Vector3 destination, LocomotionSpeedTier speedTier, float lingerDuration)
+        {
+            // v5: A leg that was still lingering from a PREVIOUS arrival (shouldn't normally
+            // happen, since nothing should call MoveTo() again before OnArrivedAtDestination
+            // fires — but defensive regardless) must not be allowed to fire
+            // OnArrivedAtDestination late, after this NPC has already been redirected.
+            if (_lingerCoroutine != null)
+            {
+                StopCoroutine(_lingerCoroutine);
+                _lingerCoroutine = null;
+            }
+
             _currentLegTargetSpeed = speedTier == LocomotionSpeedTier.Run ? _runSpeed : _walkSpeed;
+            // v2: Recorded alongside the numeric target speed — this is what IsRunning reads.
+            _currentSpeedTier = speedTier;
+            // v5: Decided once per leg, here — read by Update()'s deceleration/Stop-flourish gate
+            // and by the arrival branch to decide whether/how long to linger.
+            _currentLegLingerDuration = lingerDuration;
+            _currentLegShouldStop = lingerDuration > 0f;
 
             _agent.SetDestination(destination);
             _isMoving = true;
@@ -164,6 +322,14 @@ namespace TownsPeople.GamePlay
         {
             _isMoving = false;
             _agent.ResetPath();
+
+            // v5: Cancel any pending linger wait — Stop() means this NPC's route has been
+            // interrupted; a stale linger firing OnArrivedAtDestination afterward would be wrong.
+            if (_lingerCoroutine != null)
+            {
+                StopCoroutine(_lingerCoroutine);
+                _lingerCoroutine = null;
+            }
         }
 
         public void Pause()
@@ -175,6 +341,25 @@ namespace TownsPeople.GamePlay
         {
             _agent.isStopped = false;
         }
+
+        // ---------- INpcMovementController ----------
+
+        /// <summary>
+        /// v2: True only while actually moving, not paused, and on the Run tier — an NPC that
+        /// has arrived, is idle, or is paused (e.g. already mid-interaction) is never "running,"
+        /// even if its last assigned leg was a Run leg.
+        /// </summary>
+        public bool IsRunning => _isMoving && !IsPaused && _currentSpeedTier == LocomotionSpeedTier.Run;
+
+        /// <summary>
+        /// v2: INpcMovementController entry point — forwards straight to the existing Pause().
+        /// Kept as a separate method (rather than exposing Pause() directly to the interface)
+        /// so the interface's intent stays self-documenting at the call site in core code.
+        /// </summary>
+        public void PauseForInteraction() => Pause();
+
+        /// <summary>v2: INpcMovementController entry point — forwards straight to the existing Resume().</summary>
+        public void ResumeAfterInteraction() => Resume();
 
         /// <summary>EXPERIMENTAL — only meaningful if Use Root Motion is enabled.</summary>
         public void ReceiveRootMotion()
@@ -213,14 +398,59 @@ namespace TownsPeople.GamePlay
             if (float.IsNaN(remainingDistance) || float.IsInfinity(remainingDistance)) return;
 
             float turnMultiplier = ComputeTurnSpeedMultiplier();
-            SetTargetSpeed(_currentLegTargetSpeed * turnMultiplier);
+            // v5: Deceleration only applies to a leg with LingerDuration > 0 — a plain
+            // pass-through waypoint (LingerDuration == 0) flows through at full speed
+            // (multiplier stays 1), exactly like before v3.2 ever existed.
+            float arrivalMultiplier = _currentLegShouldStop ? ComputeArrivalSpeedMultiplier(remainingDistance) : 1f;
+            SetTargetSpeed(_currentLegTargetSpeed * turnMultiplier * arrivalMultiplier);
 
             if (remainingDistance <= _agent.stoppingDistance)
             {
                 _isMoving = false;
                 _hasArrivedThisLeg = true;
-                OnArrivedAtDestination?.Invoke();
+
+                if (_currentLegShouldStop)
+                {
+                    // v4: Only a real stop plays the Stop flourish — a pass-through waypoint's
+                    // instant, imperceptible arrival (no preceding deceleration) doesn't warrant one.
+                    TryPlayStopAnimation();
+                    // v5: Actually WAIT for LingerDuration before signaling "ready for the next
+                    // leg" — previously nothing waited at all; OnArrivedAtDestination fired the
+                    // instant arrival was detected regardless of this field.
+                    _lingerCoroutine = StartCoroutine(LingerThenNotifyArrived(_currentLegLingerDuration));
+                }
+                else
+                {
+                    OnArrivedAtDestination?.Invoke();
+                }
             }
+        }
+
+        /// <summary>
+        /// v5: Waits out this leg's LingerDuration, THEN fires OnArrivedAtDestination — this is
+        /// what makes a stop actually pause for the configured duration instead of immediately
+        /// signaling readiness for the next leg the instant arrival is physically detected.
+        /// </summary>
+        private IEnumerator LingerThenNotifyArrived(float duration)
+        {
+            yield return new WaitForSeconds(duration);
+            _lingerCoroutine = null;
+            OnArrivedAtDestination?.Invoke();
+        }
+
+        /// <summary>
+        /// v3: Plays the discrete, one-shot Stop animation via NPCAnimationBridge if this NPC
+        /// was moving fast enough at the moment of arrival to warrant one. No-op entirely if no
+        /// NPCAnimationBridge is present, no Stop State Name is configured, or arrival speed was
+        /// below the configured threshold.
+        /// </summary>
+        private void TryPlayStopAnimation()
+        {
+            if (_animationBridge == null || string.IsNullOrEmpty(_stopStateName)) return;
+            if (_lastNormalizedSpeed < _stopAnimationMinNormalizedSpeed) return;
+
+            int stopHash = Animator.StringToHash(_stopStateName);
+            _animationBridge.SetAnimationState(stopHash);
         }
 
         private float ComputeTurnSpeedMultiplier()
@@ -246,6 +476,22 @@ namespace TownsPeople.GamePlay
             float slowdownAmount = proximityT * sharpnessT;
 
             return Mathf.Lerp(1f, _minTurnSpeedMultiplier, slowdownAmount);
+        }
+
+        /// <summary>
+        /// v3.2: Smoothly ramps target speed toward 0 as this NPC approaches its destination —
+        /// deliberately separate from NavMeshAgent's own Auto Braking (kept OFF — it would fight
+        /// this and the existing Turn Anticipation slowdown, double-applying deceleration
+        /// unpredictably). SmoothStep gives an ease-in/ease-out curve rather than a linear ramp,
+        /// which reads as noticeably more natural than a straight-line slowdown.
+        /// </summary>
+        private float ComputeArrivalSpeedMultiplier(float remainingDistance)
+        {
+            if (!_decelerateOnArrival || _arrivalDecelerationDistance <= 0f) return 1f;
+            if (remainingDistance >= _arrivalDecelerationDistance) return 1f;
+
+            float t = Mathf.Clamp01(remainingDistance / _arrivalDecelerationDistance);
+            return Mathf.SmoothStep(0f, 1f, t);
         }
 
         private void SetTargetSpeed(float speed)
@@ -308,44 +554,80 @@ namespace TownsPeople.GamePlay
 
             if (!string.IsNullOrEmpty(_speedParameterName))
             {
-                _animator.SetFloat(_speedParameterName, normalizedSpeed);
+                // v3.2: Damped overload instead of the instant one — Unity exponentially eases
+                // the parameter toward normalizedSpeed over _animatorParameterDampTime seconds,
+                // rather than snapping the blend tree's position every single frame. This is the
+                // actual fix for "rough" blend tree feel, especially noticeable while stopping.
+                _animator.SetFloat(_speedParameterName, normalizedSpeed, _animatorParameterDampTime, Time.deltaTime);
+            }
+
+            // v3: Recorded regardless of whether Speed Parameter Name is actually configured —
+            // TryPlayStopAnimation() needs this reading independent of the Animator wiring.
+            _lastNormalizedSpeed = normalizedSpeed;
+
+            // v3: Second axis of a 2D Freeform Blend Tree (Speed × Turn), if configured.
+            if (!string.IsNullOrEmpty(_turnParameterName))
+            {
+                // v3.2: Same damping as Speed above — an un-damped Turn value would still look
+                // snappy even with Speed smoothed, since they drive the same blend tree together.
+                _animator.SetFloat(_turnParameterName, ComputeTurnParameter(), _animatorParameterDampTime, Time.deltaTime);
             }
 
             if (!string.IsNullOrEmpty(_stateSpeedMultiplierParameterName))
             {
-                float multiplier = ComputePlaybackRateMultiplier(normalizedSpeed);
+                // v6: Live dominant-clip lookup instead of Speed-axis interpolation — see
+                // ComputeLiveClipMultiplier() for why.
+                float multiplier = ComputeLiveClipMultiplier();
                 _animator.SetFloat(_stateSpeedMultiplierParameterName, multiplier);
             }
         }
 
         /// <summary>
-        /// Generalized to any number of poses (not hardcoded to exactly Idle/Walk/Run) — finds
-        /// the two entries in _posePlaybackRates (sorted ascending by Threshold, as maintained
-        /// by the editor's sync) that bracket normalizedSpeed, and Lerps between their
-        /// Multiplier values based on relative position between those two thresholds.
+        /// v3: Standard local-space-velocity technique for driving a turning blend — how far the
+        /// NavMeshAgent's ACTUAL velocity points sideways relative to this NPC's CURRENT facing,
+        /// normalized against Walk Speed and clamped to [-1, 1]. Non-zero any time NavMeshAgent's
+        /// own rotation (turning to face its desired direction) hasn't fully caught up yet —
+        /// exactly the transient window a 2D blend tree needs in order to visibly show a turn.
+        /// Naturally decays back to 0 once the NPC finishes rotating to face its new heading.
         /// </summary>
-        private float ComputePlaybackRateMultiplier(float normalizedSpeed)
+        private float ComputeTurnParameter()
         {
-            if (_posePlaybackRates == null || _posePlaybackRates.Count == 0) return 1f;
-            if (_posePlaybackRates.Count == 1) return _posePlaybackRates[0].Multiplier;
+            Vector3 localVelocity = transform.InverseTransformDirection(_agent.velocity);
+            float normalized = _walkSpeed > 0.0001f ? localVelocity.x / _walkSpeed : 0f;
+            return Mathf.Clamp(normalized, -1f, 1f);
+        }
 
-            if (normalizedSpeed <= _posePlaybackRates[0].Threshold) return _posePlaybackRates[0].Multiplier;
-            int lastIndex = _posePlaybackRates.Count - 1;
-            if (normalizedSpeed >= _posePlaybackRates[lastIndex].Threshold) return _posePlaybackRates[lastIndex].Multiplier;
+        /// <summary>
+        /// v6: Reads whichever clip currently has the HIGHEST blend weight on
+        /// _locomotionLayerIndex — the dominant pose right now — and returns THAT clip's own
+        /// configured Multiplier from _posePlaybackRates (matched by clip name). Works
+        /// identically for a 1D or 2D (or N-D) blend tree, since it's driven entirely by
+        /// Unity's own live blend weights rather than hand-rolled axis interpolation — every
+        /// pose gets its own real multiplier, nothing is collapsed or approximated from a
+        /// neighboring pose. Replaces the old Speed-axis-only bracket interpolation, which could
+        /// never correctly handle a 2D tree's Turn-axis variants.
+        /// </summary>
+        private float ComputeLiveClipMultiplier()
+        {
+            if (_posePlaybackRates == null || _posePlaybackRates.Count == 0 || _animator == null) return 1f;
 
-            for (int i = 0; i < lastIndex; i++)
+            AnimatorClipInfo[] clipInfos = _animator.GetCurrentAnimatorClipInfo(_locomotionLayerIndex);
+            if (clipInfos == null || clipInfos.Length == 0) return 1f;
+
+            AnimatorClipInfo dominant = clipInfos[0];
+            for (int i = 1; i < clipInfos.Length; i++)
             {
-                float thresholdA = _posePlaybackRates[i].Threshold;
-                float thresholdB = _posePlaybackRates[i + 1].Threshold;
+                if (clipInfos[i].weight > dominant.weight) dominant = clipInfos[i];
+            }
+            if (dominant.clip == null) return 1f;
 
-                if (normalizedSpeed >= thresholdA && normalizedSpeed <= thresholdB)
-                {
-                    float span = thresholdB - thresholdA;
-                    float t = span > 0.0001f ? (normalizedSpeed - thresholdA) / span : 0f;
-                    return Mathf.Lerp(_posePlaybackRates[i].Multiplier, _posePlaybackRates[i + 1].Multiplier, t);
-                }
+            foreach (PosePlaybackRate rate in _posePlaybackRates)
+            {
+                if (rate.MotionName == dominant.clip.name) return rate.Multiplier;
             }
 
+            // Dominant clip has no synced entry (e.g. sync hasn't been re-run since a new pose
+            // was added to the tree) — default to no change rather than guessing.
             return 1f;
         }
 

@@ -31,13 +31,25 @@ namespace TownsPeople.CustomEditor
     // (LocomotionAgent, LocomotionRootMotionRelay) goes through Type.GetType() reflection
     // rather than a direct compile-time reference — Locomotion is a separate, optional add-on
     // that will not be present in every buyer's project, and this file must compile and
-    // function correctly whether or not it's installed. When present and the "Include
-    // Locomotion" toggle is checked, generated NPCs get LocomotionAgent (wired) and
-    // LocomotionRootMotionRelay (on the mesh child), with per-pose playback rates auto-synced
-    // from a Blend Tree state named "Locomotion" if one exists, and NPCAnimationBridge's
-    // Animation Layer Index defaulted to 1 to match Locomotion's recommended 2-layer Animator
-    // setup. Available for every NPC variant, including Non-Dialogue — unlike
-    // NPCWitnessReaction, Locomotion has no dependency on NPCGossipMemory at all.
+    // function correctly whether or not it's installed. When present and "Include Locomotion"
+    // is checked, generated NPCs get LocomotionAgent (wired) and LocomotionRootMotionRelay (on
+    // the mesh child), with per-pose playback rates auto-synced from a Blend Tree state named
+    // "Locomotion" if one exists, and NPCAnimationBridge's Animation Layer Index defaulted to 1
+    // to match Locomotion's recommended 2-layer Animator setup. Available for every NPC
+    // variant, including Non-Dialogue — Locomotion has no dependency on NPCGossipMemory.
+    //
+    // v30 FIX: Animation Layer Index alone wasn't enough — NPCAnimationBridge's Default Idle
+    // States previously kept its component-level default ("Idle_Neutral", a real clip). On the
+    // Reactions layer (Override blending), reverting to a real clip permanently masks the Base
+    // Layer's Locomotion Blend Tree the first time any reactive animation completes. Now
+    // auto-set to "Empty" when Locomotion is included, IF a state named "Empty" is actually
+    // found in the controller — otherwise left unchanged with a console warning.
+    //
+    // v31 FIX: Unity's default Animator Culling Mode can stop animation evaluation entirely
+    // whenever a character's renderer isn't currently considered visible to any camera —
+    // everything else (transform, dialogue, movement) keeps working regardless, which shows up
+    // as "animation frozen, but interactable/still moving." Affects every NPC, independent of
+    // Locomotion. Now set to Always Animate on every generated NPC automatically.
 
     /// <summary>
     /// Professional asset store pipeline wizard window that dynamically scans project assemblies.
@@ -78,7 +90,7 @@ namespace TownsPeople.CustomEditor
         private bool _hasQuestAddon = false;
         private bool _hasLocomotionAddon = false;
 
-        [Tooltip("Adds LocomotionAgent (NavMesh-driven movement, Walk/Run speed tiers, turn anticipation) and LocomotionRootMotionRelay to this NPC, fully wired. Also defaults NPCAnimationBridge's Animation Layer Index to 1, matching Locomotion's recommended 2-layer Animator setup. If a Blend Tree state named exactly \"Locomotion\" exists in the shared Animator Controller, its per-pose playback rates are auto-synced too. Only shown if the Locomotion add-on is detected in the project.")]
+        [Tooltip("Adds LocomotionAgent (NavMesh-driven movement, Walk/Run speed tiers, turn anticipation) and LocomotionRootMotionRelay to this NPC, fully wired. Also defaults NPCAnimationBridge's Animation Layer Index to 1, matching Locomotion's recommended 2-layer Animator setup, and — if that setup is detected — sets Default Idle States to \"Empty\". If a Blend Tree state named exactly \"Locomotion\" exists in the shared Animator Controller, its per-pose playback rates are auto-synced too. Only shown if the Locomotion add-on is detected in the project.")]
         private bool _includeLocomotion = false;
 
         [Tooltip("If enabled, this NPC gets NPCRumorIndicator — an optional visual debug tool that spawns a small colored sphere above its head for each rumor it currently knows.")]
@@ -305,7 +317,7 @@ namespace TownsPeople.CustomEditor
             else
             {
                 _includeLocomotion = EditorGUILayout.ToggleLeft(
-                    new GUIContent("Include Locomotion", "Adds LocomotionAgent and LocomotionRootMotionRelay, fully wired. Also defaults this NPC's NPCAnimationBridge Animation Layer Index to 1 to match Locomotion's recommended 2-layer Animator setup (Base Layer = Locomotion Blend Tree, Layer 1 = Reactions). Per-pose playback rates auto-sync if a Blend Tree state named exactly \"Locomotion\" exists — otherwise sync manually afterward via LocomotionAgent's own Inspector."),
+                    new GUIContent("Include Locomotion", "Adds LocomotionAgent and LocomotionRootMotionRelay, fully wired. Also defaults this NPC's NPCAnimationBridge Animation Layer Index to 1 and (if found) Default Idle States to \"Empty\", to match Locomotion's recommended 2-layer Animator setup (Base Layer = Locomotion Blend Tree, Layer 1 = Reactions). Per-pose playback rates auto-sync if a Blend Tree state named exactly \"Locomotion\" exists — otherwise sync manually afterward via LocomotionAgent's own Inspector."),
                     _includeLocomotion);
                 EditorGUILayout.HelpBox("Available for every NPC variant, including Non-Dialogue — Locomotion has no dependency on NPCGossipMemory/dialogue at all.", MessageType.None);
             }
@@ -590,6 +602,16 @@ namespace TownsPeople.CustomEditor
                 characterAnimator = meshInstance.AddComponent<Animator>();
             }
 
+            // v31 FIX: Unity's default Animator Culling Mode can stop animation evaluation
+            // entirely whenever the character's renderer isn't currently considered visible to
+            // any camera — everything else (transform, dialogue, movement) keeps working, so
+            // this shows up specifically as "animation frozen, but interactable/still moving."
+            // Discovered and fixed manually on one test NPC earlier this session, but never
+            // added here — meaning every NPC generated since then (Locomotion or not) shipped
+            // with the bug latent. Always Animate trades a small per-NPC CPU cost for
+            // guaranteed-correct animation regardless of camera visibility.
+            characterAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+
             string customAnimatorName = "NPC Animator";
             string[] foundGuids = AssetDatabase.FindAssets($"{customAnimatorName} t:RuntimeAnimatorController");
 
@@ -656,11 +678,32 @@ namespace TownsPeople.CustomEditor
             // v29: Locomotion's recommended Animator setup splits reactive animations onto a
             // dedicated upper layer (index 1, Override blend, Empty default state) separate
             // from the Locomotion Blend Tree on the Base Layer — default this NPC's reactive-
-            // animation layer to match when Locomotion is included. Purely a starting default;
-            // freely editable afterward, same as any other generated field.
+            // animation layer to match when Locomotion is included.
             if (_includeLocomotion && _hasLocomotionAddon)
             {
                 serializedAnimBridge.FindProperty("_animationLayerIndex").intValue = 1;
+
+                // v30 FIX: Animation Layer Index alone isn't enough — Default Idle States
+                // previously kept its component-level default ("Idle_Neutral", a real clip).
+                // On the Reactions layer (Override blending), reverting to a real clip
+                // PERMANENTLY masks the Base Layer's Locomotion Blend Tree the first time any
+                // reactive animation completes. The Reactions layer's own Empty default state
+                // is what should be reverted to instead. Only applied if an "Empty" state is
+                // actually found in the controller — otherwise left alone with a warning.
+                AnimatorController controllerForIdleCheck = characterAnimator.runtimeAnimatorController as AnimatorController;
+                bool foundEmptyState = controllerForIdleCheck != null && FindNamedState(controllerForIdleCheck, "Empty") != null;
+
+                if (foundEmptyState)
+                {
+                    SerializedProperty idleStatesProp = serializedAnimBridge.FindProperty("_defaultIdleStates");
+                    idleStatesProp.ClearArray();
+                    idleStatesProp.InsertArrayElementAtIndex(0);
+                    idleStatesProp.GetArrayElementAtIndex(0).stringValue = "Empty";
+                }
+                else
+                {
+                    Debug.LogWarning("<color=orange>[NPC Creator Wizard]</color> Locomotion was included, but no state named 'Empty' was found on the Reactions layer — Default Idle States was left unchanged. Reactive animations may freeze the Locomotion Blend Tree once triggered. See this project's Locomotion setup notes for creating the Reactions layer's Empty default state.");
+                }
             }
 
             serializedAnimBridge.ApplyModifiedProperties();
@@ -703,10 +746,8 @@ namespace TownsPeople.CustomEditor
             }
 
             // v29: Locomotion — deliberately available for EVERY variant, including
-            // Non-Dialogue (unlike NPCWitnessReaction above), since Locomotion has zero
-            // dependency on NPCGossipMemory/dialogue at all — a wandering townsperson using
-            // the lightweight NonDialogue_NPC variant is exactly the use case this was built
-            // for. Every Locomotion type is resolved via Type.GetType() rather than a direct
+            // Non-Dialogue, since Locomotion has zero dependency on NPCGossipMemory at all.
+            // Every Locomotion type is resolved via Type.GetType() rather than a direct
             // reference, so this whole block is a complete no-op (and this file still compiles
             // cleanly) in a project that doesn't have the Locomotion add-on installed.
             if (_includeLocomotion && _hasLocomotionAddon)
@@ -953,10 +994,9 @@ namespace TownsPeople.CustomEditor
         }
 
         /// <summary>
-        /// v29: Recursively searches every layer of the given controller for a state whose
-        /// name matches (case-insensitive) and whose Motion is a BlendTree. Used to
-        /// auto-populate LocomotionAgent's per-pose playback rates at generation time, without
-        /// guessing at an unrelated tree if the naming convention isn't followed.
+        /// Recursively searches every layer of the given controller for a state whose name
+        /// matches (case-insensitive) and whose Motion is a BlendTree. Used to auto-populate
+        /// LocomotionAgent's per-pose playback rates at generation time.
         /// </summary>
         private static BlendTree FindNamedBlendTree(AnimatorController controller, string stateName)
         {
@@ -981,6 +1021,38 @@ namespace TownsPeople.CustomEditor
             foreach (ChildAnimatorStateMachine childMachine in stateMachine.stateMachines)
             {
                 BlendTree found = FindNamedBlendTreeRecursive(childMachine.stateMachine, stateName);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Recursively searches every layer for a state matching the given name (case-
+        /// insensitive), regardless of what its Motion is — used to confirm a plain "Empty"
+        /// state actually exists before pointing Default Idle States at it.
+        /// </summary>
+        private static AnimatorState FindNamedState(AnimatorController controller, string stateName)
+        {
+            foreach (AnimatorControllerLayer layer in controller.layers)
+            {
+                AnimatorState found = FindNamedStateRecursive(layer.stateMachine, stateName);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private static AnimatorState FindNamedStateRecursive(AnimatorStateMachine stateMachine, string stateName)
+        {
+            foreach (ChildAnimatorState childState in stateMachine.states)
+            {
+                if (string.Equals(childState.state.name, stateName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return childState.state;
+                }
+            }
+            foreach (ChildAnimatorStateMachine childMachine in stateMachine.stateMachines)
+            {
+                AnimatorState found = FindNamedStateRecursive(childMachine.stateMachine, stateName);
                 if (found != null) return found;
             }
             return null;

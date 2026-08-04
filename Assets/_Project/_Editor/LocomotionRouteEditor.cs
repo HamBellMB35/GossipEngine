@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+ï»¿#if UNITY_EDITOR
 using UnityEngine;
 using UnityEditor;
 using TownsPeople.GamePlay;
@@ -13,12 +13,16 @@ namespace TownsPeople.CustomEditor
     /// waypoint's speed tier / linger duration from the Inspector list, and traces a thick,
     /// per-route-colored line across every leg of the route (via Handles.DrawLine, since
     /// Gizmos.DrawLine has no thickness parameter) whenever this route is the active
-    /// Selection — including via NPCControlPanelWindow's "Show Locomotion Route" button.
+    /// Selection ï¿½ including via NPCControlPanelWindow's "Show Locomotion Route" button.
     ///
     /// FIX: TownsPeople.CustomEditor's own last namespace segment shadows UnityEditor's
     /// CustomEditor attribute and Editor base class (same collision already fixed once on
-    /// PlayerDeedBroadcasterEditor) — both are fully qualified below instead of relying on
+    /// PlayerDeedBroadcasterEditor) ï¿½ both are fully qualified below instead of relying on
     /// the `using UnityEditor;` import for these two specifically.
+    ///
+    /// v2: Draws each waypoint's Point of Interest fields (Is Point Of Interest / Stop
+    /// Behavior / Stop Chance) alongside the pre-existing Position/Arrival Speed Tier/Linger
+    /// Duration ï¿½ Stop Chance only shown when Stop Behavior is actually Random Chance.
     /// </summary>
     [UnityEditor.CustomEditor(typeof(LocomotionRoute))]
     public class LocomotionRouteEditor : UnityEditor.Editor
@@ -74,6 +78,25 @@ namespace TownsPeople.CustomEditor
                 EditorGUILayout.PropertyField(waypointProp.FindPropertyRelative("ArrivalSpeedTier"), new GUIContent("Arrival Speed Tier"));
                 EditorGUILayout.PropertyField(waypointProp.FindPropertyRelative("LingerDuration"));
 
+                // v13: POI fields ï¿½ Stop Chance only shown when actually relevant (Random
+                // Chance mode), so the Inspector doesn't clutter itself for the common Always
+                // Stop case.
+                SerializedProperty isPoiProp = waypointProp.FindPropertyRelative("IsPointOfInterest");
+                EditorGUILayout.PropertyField(isPoiProp, new GUIContent("Is Point Of Interest"));
+
+                if (isPoiProp.boolValue)
+                {
+                    EditorGUI.indentLevel++;
+                    SerializedProperty stopBehaviorProp = waypointProp.FindPropertyRelative("StopBehavior");
+                    EditorGUILayout.PropertyField(stopBehaviorProp, new GUIContent("Stop Behavior"));
+
+                    if (stopBehaviorProp.enumValueIndex == (int)WaypointStopBehavior.RandomChance)
+                    {
+                        EditorGUILayout.PropertyField(waypointProp.FindPropertyRelative("StopChance"), new GUIContent("Stop Chance"));
+                    }
+                    EditorGUI.indentLevel--;
+                }
+
                 EditorGUILayout.EndVertical();
             }
 
@@ -116,9 +139,9 @@ namespace TownsPeople.CustomEditor
         /// <summary>
         /// Draws a thick, editable-color line tracing every leg of the route.
         /// Handles.DrawLine supports a pixel-thickness parameter that Gizmos.DrawLine does not
-        /// — that's why this lives here rather than in LocomotionRoute's own OnDrawGizmos.
+        /// ï¿½ that's why this lives here rather than in LocomotionRoute's own OnDrawGizmos.
         /// Runs automatically whenever this route is the active Selection, including right
-        /// after NPCControlPanelWindow's "Show Locomotion Route" button — the exact trigger
+        /// after NPCControlPanelWindow's "Show Locomotion Route" button ï¿½ the exact trigger
         /// this was built for.
         /// </summary>
         private static void DrawTracedRouteLine(LocomotionRoute route)
@@ -140,7 +163,7 @@ namespace TownsPeople.CustomEditor
 
         /// <summary>
         /// Same raycast-from-Scene-camera convenience as NPCCreatorWizardWindow's NPC spawn
-        /// placement — lands on the first collider hit (e.g. the street/ground), falling back
+        /// placement ï¿½ lands on the first collider hit (e.g. the street/ground), falling back
         /// to a fixed distance in front of the camera if nothing's hit.
         /// </summary>
         private static Vector3 ComputeSceneCameraFocusPosition()
