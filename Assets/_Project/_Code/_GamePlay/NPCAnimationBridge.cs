@@ -19,8 +19,12 @@ namespace TownsPeople.GamePlay
     // controller — typos and mismatches are no longer possible at all.
     // v8: Added a public Animator getter so sibling components (e.g. NPCWitnessReaction) can
     // reuse this bridge's already-resolved Animator reference instead of independently
-    // re-resolving (and potentially finding a different one in an edge case with multiple
-    // Animators in the hierarchy).
+    // re-resolving.
+    // v9: Added a configurable Animator layer index for reactive animations (tone/witness
+    // reactions, idle reverts) — default 0 (Base Layer), zero behavior change unless
+    // deliberately opted into. Exists to support the Locomotion add-on's continuous Speed-
+    // driven Blend Tree living on the Base Layer, with reactive animations moved to a separate
+    // upper layer so the two systems don't fight for control of the same layer.
     public class NPCAnimationBridge : MonoBehaviour
     {
         [Header("Animation Settings")]
@@ -28,6 +32,9 @@ namespace TownsPeople.GamePlay
         [SerializeField] private float _defaultRevertDelay = 3.0f;
         [Tooltip("The transition duration for CrossFade.")]
         [SerializeField] private float _crossFadeDuration = 0.2f;
+
+        [Tooltip("Which Animator layer reactive animations (tone/witness reactions, idle reverts) play on. Leave at 0 (Base Layer) unless you've split locomotion (a continuous Speed-driven Blend Tree, see LocomotionAgent) onto the Base Layer and moved reactive animations to a dedicated upper layer instead — in that setup, this should point at that layer's index so the two systems don't fight for control of the same layer.")]
+        [SerializeField] private int _animationLayerIndex = 0;
 
         [Header("Idle / Default Animation Pool")]
         [Tooltip("Pool of Animator state names this NPC can revert to when returning to a resting state. One is chosen at random each time a revert happens. Populated as a dropdown from the Animator assigned below.")]
@@ -39,8 +46,8 @@ namespace TownsPeople.GamePlay
 
         /// <summary>
         /// v8: Read-only access to this bridge's resolved Animator — lets sibling components
-        /// (e.g. NPCWitnessReaction) reuse the exact same reference instead of re-resolving
-        /// independently.
+        /// (e.g. NPCWitnessReaction, LocomotionAgent) reuse the exact same reference instead of
+        /// re-resolving independently.
         /// </summary>
         public Animator Animator => _animator;
 
@@ -125,7 +132,7 @@ namespace TownsPeople.GamePlay
         {
             if (_animator == null) return;
 
-            _animator.CrossFade(stateHash, _crossFadeDuration);
+            _animator.CrossFade(stateHash, _crossFadeDuration, _animationLayerIndex);
             Debug.Log($"<color=cyan>[Animation]</color> State changed to: {stateHash}");
 
             bool isAlreadyAnIdleState = _defaultIdleStateHashes.Contains(stateHash);
@@ -169,7 +176,7 @@ namespace TownsPeople.GamePlay
             if (_defaultIdleStateHashes.Count == 0) return;
 
             int randomIdleHash = _defaultIdleStateHashes[Random.Range(0, _defaultIdleStateHashes.Count)];
-            _animator.CrossFade(randomIdleHash, _crossFadeDuration);
+            _animator.CrossFade(randomIdleHash, _crossFadeDuration, _animationLayerIndex);
         }
     }
 }

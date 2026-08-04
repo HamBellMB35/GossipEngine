@@ -62,11 +62,28 @@ namespace TownsPeople.CustomEditor
         {
             BuildCategoryMaps();
             AutoDetectTargetFromSelection();
+            EditorApplication.playModeStateChanged += HandlePlayModeStateChanged;
         }
 
         private void OnDisable()
         {
             ClearEditorCache();
+            EditorApplication.playModeStateChanged -= HandlePlayModeStateChanged;
+        }
+
+        /// <summary>
+        /// FIX: cached Editors wrap component instances that get destroyed the moment Play
+        /// Mode exits (and fresh instances are created on entering it) — without clearing the
+        /// cache here, the panel kept trying to render Editors pointed at destroyed objects,
+        /// showing Unity's "The associated script cannot be loaded" fallback for every
+        /// affected component (in practice, this hit LocomotionAgent/
+        /// LocomotionRootMotionRelay since those are the ones actively used/modified at
+        /// runtime, but the bug applied to any component this panel had rendered).
+        /// </summary>
+        private void HandlePlayModeStateChanged(PlayModeStateChange state)
+        {
+            ClearEditorCache();
+            Repaint();
         }
 
         private void OnSelectionChange()
@@ -101,7 +118,7 @@ namespace TownsPeople.CustomEditor
             {
                 ("Optional Behavior Overrides", new[] { typeof(NPCWitnessReaction), typeof(NPCRumorIndicator) }),
                 ("Role-Specific Add-ons", roleSpecificTypes.ToArray()),
-                ("Locomotion", new[] { typeof(LocomotionAgent) }),
+                ("Locomotion", new[] { typeof(LocomotionAgent), typeof(LocomotionRootMotionRelay) }),
             };
         }
 
