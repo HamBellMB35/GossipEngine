@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+﻿#if UNITY_EDITOR
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -12,6 +12,9 @@ namespace TownsPeople.EditorTools
     /// Editor-only drawer for [AnimatorStateName]. Must live in an Editor folder/assembly
     /// since it depends on UnityEditor.Animations, which isn't available at runtime.
     /// </summary>
+    // v2: ResolveController/GetAllStateNames exposed as public static — reused directly by
+    // NPCAnimationBridgeEditor's custom Default Idle States list, so the state-name lookup
+    // logic exists in exactly one place.
     [CustomPropertyDrawer(typeof(AnimatorStateNameAttribute))]
     public class AnimatorStateNameDrawer : PropertyDrawer
     {
@@ -29,7 +32,7 @@ namespace TownsPeople.EditorTools
 
             if (controller == null)
             {
-                // No controller assigned yet � fall back to a plain text field so the
+                // No controller assigned yet � fall back to a plain text field so the
                 // user is never blocked, with a hint about why there's no dropdown.
                 EditorGUI.BeginChangeCheck();
                 string typedValue = EditorGUI.TextField(position, label, property.stringValue);
@@ -78,6 +81,13 @@ namespace TownsPeople.EditorTools
 
         private AnimatorController ResolveController(SerializedProperty property, string controllerFieldName)
         {
+            return ResolveControllerStatic(property, controllerFieldName);
+        }
+
+        // v2: Exposed as public static — reused directly by NPCAnimationBridgeEditor's custom
+        // Default Idle States list, instead of duplicating this lookup logic a second time.
+        public static AnimatorController ResolveControllerStatic(SerializedProperty property, string controllerFieldName)
+        {
             SerializedProperty siblingProp = property.serializedObject.FindProperty(controllerFieldName);
             if (siblingProp == null || siblingProp.objectReferenceValue == null) return null;
 
@@ -94,7 +104,8 @@ namespace TownsPeople.EditorTools
             }
         }
 
-        private List<string> GetAllStateNames(AnimatorController controller)
+        // v2: Exposed as public static for the same reason as above.
+        public static List<string> GetAllStateNames(AnimatorController controller)
         {
             var names = new List<string>();
             foreach (AnimatorControllerLayer layer in controller.layers)
@@ -104,7 +115,7 @@ namespace TownsPeople.EditorTools
             return names.Distinct().OrderBy(n => n).ToList();
         }
 
-        private void CollectStateNames(AnimatorStateMachine stateMachine, List<string> names)
+        private static void CollectStateNames(AnimatorStateMachine stateMachine, List<string> names)
         {
             foreach (ChildAnimatorState childState in stateMachine.states)
             {

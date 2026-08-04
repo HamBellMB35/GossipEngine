@@ -1522,7 +1522,6 @@ GameObject:
   - component: {fileID: 419605745}
   - component: {fileID: 419605744}
   - component: {fileID: 419605743}
-  - component: {fileID: 419605742}
   - component: {fileID: 419605741}
   - component: {fileID: 419605740}
   - component: {fileID: 419605739}
@@ -1579,33 +1578,34 @@ MonoBehaviour:
   - MotionName: MCU_am_Stand_Idle_06_ScratchArm
     Threshold: 0
     Multiplier: 1
-  - MotionName: Walking
-    Threshold: 0.16666667
-    Multiplier: 1.5
   - MotionName: Turn Left
-    Threshold: 0.33333334
+    Threshold: 0.5
+    Multiplier: 3
+  - MotionName: Walking
+    Threshold: 0.5
     Multiplier: 1
   - MotionName: Turn Right
     Threshold: 0.5
-    Multiplier: 1
-  - MotionName: Running
-    Threshold: 0.6666667
-    Multiplier: 1.4
+    Multiplier: 3
   - MotionName: Running Turn Left
-    Threshold: 0.8333333
-    Multiplier: 1
+    Threshold: 1
+    Multiplier: 1.2
+  - MotionName: Running
+    Threshold: 1
+    Multiplier: 1.3
   - MotionName: Running Right Turn
     Threshold: 1
-    Multiplier: 1
+    Multiplier: 1.2
   _stateSpeedMultiplierParameterName: LocomotionSpeedMultiplier
+  _locomotionLayerIndex: 1
   _animatorParameterDampTime: 0.15
   _decelerateOnArrival: 1
   _arrivalDecelerationDistance: 1.5
   _avoidancePriority: 50
   _arrivalThreshold: 0.15
   _assignedRoute: {fileID: 1398861396}
-  _acceleration: 20
-  _angularSpeed: 360
+  _acceleration: 10
+  _angularSpeed: 180
   _slowForTurns: 0
   _turnAngleThreshold: 45
   _turnAnticipationDistance: 2.5
@@ -1623,9 +1623,9 @@ NavMeshAgent:
   m_AgentTypeID: 0
   m_Radius: 0.5
   m_Speed: 3.5
-  m_Acceleration: 20
+  m_Acceleration: 10
   avoidancePriority: 50
-  m_AngularSpeed: 360
+  m_AngularSpeed: 180
   m_StoppingDistance: 0
   m_AutoTraverseOffMeshLink: 1
   m_AutoBraking: 1
@@ -1708,18 +1708,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 662fcb3cc59c40647b93c83402fcdc9b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NpcAddonRegistry
---- !u!114 &419605742
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 419605734}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5b638e9e5b67ac743a182c5083989cc0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NPCAnimationBridge
 --- !u!82 &419605743
 AudioSource:
   m_ObjectHideFlags: 0
@@ -1938,7 +1926,7 @@ MonoBehaviour:
   _animationLayerIndex: 0
   _defaultIdleStates:
   - Idle_Neutral
-  _animator: {fileID: 0}
+  _animator: {fileID: 947088964}
   _reactionsPassThroughState: Empty
 --- !u!1 &441931522
 GameObject:
@@ -4631,7 +4619,6 @@ GameObject:
   - component: {fileID: 1394067345}
   - component: {fileID: 1394067344}
   - component: {fileID: 1394067343}
-  - component: {fileID: 1394067342}
   - component: {fileID: 1394067341}
   - component: {fileID: 1394067340}
   - component: {fileID: 1394067339}
@@ -4736,18 +4723,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 662fcb3cc59c40647b93c83402fcdc9b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NpcAddonRegistry
---- !u!114 &1394067342
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1394067336}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5b638e9e5b67ac743a182c5083989cc0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NPCAnimationBridge
 --- !u!82 &1394067343
 AudioSource:
   m_ObjectHideFlags: 0
@@ -4951,7 +4926,7 @@ MonoBehaviour:
   _animationLayerIndex: 0
   _defaultIdleStates:
   - Idle_Neutral
-  _animator: {fileID: 0}
+  _animator: {fileID: 2035710046}
   _reactionsPassThroughState: Empty
 --- !u!1 &1398861395
 GameObject:
@@ -4983,24 +4958,42 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.LocomotionRoute
   _waypoints:
-  - Position: {x: 16.25311, y: 0.1, z: -10.202316}
+  - Position: {x: 16.25311, y: 0.1, z: -14.397053}
     ArrivalSpeedTier: 0
-    LingerDuration: 2
+    LingerDuration: 0
+    IsPointOfInterest: 0
+    StopBehavior: 0
+    StopChance: 0
   - Position: {x: -3.1460562, y: 0.1, z: -17.723553}
     ArrivalSpeedTier: 1
-    LingerDuration: 2
+    LingerDuration: 0
+    IsPointOfInterest: 1
+    StopBehavior: 0
+    StopChance: -0
   - Position: {x: 0.95245266, y: 0.1, z: -6.1007094}
     ArrivalSpeedTier: 0
-    LingerDuration: 2
+    LingerDuration: 0
+    IsPointOfInterest: 0
+    StopBehavior: 0
+    StopChance: 0
   - Position: {x: -7.2264047, y: 0.1, z: -5.439893}
+    ArrivalSpeedTier: 1
+    LingerDuration: 4
+    IsPointOfInterest: 1
+    StopBehavior: 0
+    StopChance: 0
+  - Position: {x: -7.7935295, y: 0.1, z: 1.9216068}
     ArrivalSpeedTier: 0
-    LingerDuration: 2
-  - Position: {x: -7.7935295, y: 0.1, z: -0.864614}
+    LingerDuration: 0
+    IsPointOfInterest: 0
+    StopBehavior: 0
+    StopChance: 0
+  - Position: {x: 16.611, y: 0.1, z: -1.7379999}
     ArrivalSpeedTier: 0
-    LingerDuration: 2
-  - Position: {x: 11.543045, y: 0.1, z: -1.7379999}
-    ArrivalSpeedTier: 0
-    LingerDuration: 2
+    LingerDuration: 0
+    IsPointOfInterest: 0
+    StopBehavior: 0
+    StopChance: 0
   _isLoop: 1
   _lineColor: {r: 0.36, g: 0.62, b: 0.92, a: 1}
   _lineThickness: 4
@@ -6877,7 +6870,6 @@ GameObject:
   - component: {fileID: 2030668486}
   - component: {fileID: 2030668485}
   - component: {fileID: 2030668484}
-  - component: {fileID: 2030668483}
   - component: {fileID: 2030668482}
   - component: {fileID: 2030668481}
   - component: {fileID: 2030668480}
@@ -6926,6 +6918,7 @@ MonoBehaviour:
     Threshold: 1
     Multiplier: 1.6
   _stateSpeedMultiplierParameterName: LocomotionSpeedMultiplier
+  _locomotionLayerIndex: 0
   _animatorParameterDampTime: 0.15
   _decelerateOnArrival: 1
   _arrivalDecelerationDistance: 1.5
@@ -7052,18 +7045,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 662fcb3cc59c40647b93c83402fcdc9b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NpcAddonRegistry
---- !u!114 &2030668483
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2030668475}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5b638e9e5b67ac743a182c5083989cc0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NPCAnimationBridge
 --- !u!82 &2030668484
 AudioSource:
   m_ObjectHideFlags: 0
@@ -7296,7 +7277,7 @@ MonoBehaviour:
   _animationLayerIndex: 0
   _defaultIdleStates:
   - Idle_Neutral
-  _animator: {fileID: 0}
+  _animator: {fileID: 452101217}
   _reactionsPassThroughState: Empty
 --- !u!95 &2035710046 stripped
 Animator:
@@ -7652,7 +7633,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
-  m_PresetInfoIsWorld: 0
+  m_PresetInfoIsWorld: 1
 --- !u!223 &2107131844
 Canvas:
   m_ObjectHideFlags: 0

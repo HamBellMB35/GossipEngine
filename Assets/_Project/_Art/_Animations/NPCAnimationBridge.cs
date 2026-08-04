@@ -149,16 +149,9 @@ namespace TownsPeople.GamePlay
 
         private void Awake()
         {
-            // Resolve the Animator reference if it wasn't assigned in the Inspector: first
-            // check this GameObject itself, then fall back to searching its children.
-            if (_animator == null)
-            {
-                _animator = GetComponent<Animator>();
-                if (_animator == null)
-                {
-                    _animator = GetComponentInChildren<Animator>();
-                }
-            }
+            // v18: Extracted into a shared helper — see ResolveAnimatorReference() below. Reused
+            // by Reset() too, so runtime and Editor-time resolution can never drift apart.
+            ResolveAnimatorReference();
 
             // No Animator anywhere on/under this NPC — every animation call below is a no-op,
             // so warn loudly now rather than failing silently later.
@@ -195,6 +188,35 @@ namespace TownsPeople.GamePlay
             // v13 comment above for why calling it here, in Awake(), was the root cause of the
             // freeze. Awake() is still responsible for resolving _animator and building the
             // idle hash list, both of which Start() below depends on.
+        }
+
+        /// <summary>
+        /// v18: Fires automatically the instant this component is added via Add Component, and
+        /// is also available as a one-click "Reset" from the component's context menu on any
+        /// GameObject that already has it — Unity's standard convention for auto-populating
+        /// sensible defaults. Solves having to manually drag the Animator in every time.
+        /// </summary>
+        private void Reset()
+        {
+            ResolveAnimatorReference();
+        }
+
+        /// <summary>
+        /// v18: Extracted from Awake() into its own method so Reset() (Editor-time, on Add
+        /// Component or manual Reset) and Awake() (runtime) share one resolution order that can
+        /// never drift out of sync between the two. Checks this GameObject itself first, then
+        /// falls back to searching its children — the standard "rig might be on a child mesh
+        /// object" case.
+        /// </summary>
+        private void ResolveAnimatorReference()
+        {
+            if (_animator != null) return;
+
+            _animator = GetComponent<Animator>();
+            if (_animator == null)
+            {
+                _animator = GetComponentInChildren<Animator>();
+            }
         }
 
         /// <summary>

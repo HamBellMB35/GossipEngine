@@ -9,8 +9,9 @@ using TownsPeople.GamePlay;
 namespace TownsPeople.CustomEditor
 {
     /// <summary>
-    /// Custom Inspector for LocomotionAgent. Draws every existing field normally
-    /// (DrawDefaultInspector), then appends two sections:
+    /// Custom Inspector for LocomotionAgent. Draws every existing field normally EXCEPT
+    /// _posePlaybackRates (drawn exclusively by the Blend Tree section below, not twice),
+    /// then appends two sections:
     /// - Blend Tree: select a Blend Tree (auto-populated from the assigned Animator's
     ///   Controller) and sync a Multiplier field per motion in it � feeds LocomotionAgent's
     ///   PosePlaybackRates, delivered live to the Animator's State Speed > Multiplier >
@@ -38,7 +39,41 @@ namespace TownsPeople.CustomEditor
 
         public override void OnInspectorGUI()
         {
-            DrawDefaultInspector();
+            serializedObject.Update();
+
+            // v3 FIX: was DrawDefaultInspector(), which drew _posePlaybackRates here in its
+            // raw default form AND a second time down in DrawBlendTreeSection() below �
+            // the exact duplicate the "Per-Pose Playback Rate" field showing up twice was
+            // caused by. Skips that one field from this pass; every other field draws
+            // exactly as before.
+            SerializedProperty iterator = serializedObject.GetIterator();
+            bool enterChildren = true;
+            while (iterator.NextVisible(enterChildren))
+            {
+                enterChildren = false;
+                if (iterator.propertyPath == "_posePlaybackRates") continue;
+
+                // v4: Stacked layout (label above, control below, full width) instead of
+                // Unity's default side-by-side rendering � neither the label nor the
+                // slider/dropdown had enough room on one line for these two specifically.
+                if (iterator.propertyPath == "_stopAnimationMinNormalizedSpeed")
+                {
+                    EditorGUILayout.LabelField("Stop Animation Min Normalized Speed");
+                    iterator.floatValue = EditorGUILayout.Slider(iterator.floatValue, 0f, 1f);
+                    continue;
+                }
+
+                if (iterator.propertyPath == "_stateSpeedMultiplierParameterName")
+                {
+                    EditorGUILayout.LabelField("State Speed Multiplier Parameter");
+                    EditorGUILayout.PropertyField(iterator, GUIContent.none);
+                    continue;
+                }
+
+                EditorGUILayout.PropertyField(iterator, true);
+            }
+
+            serializedObject.ApplyModifiedProperties();
 
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField("Animation Speed Tuning (Editor Convenience)", EditorStyles.boldLabel);
@@ -111,7 +146,9 @@ namespace TownsPeople.CustomEditor
 
             EditorGUILayout.Space(4);
             SerializedProperty multiplierParamProp = serializedObject.FindProperty("_stateSpeedMultiplierParameterName");
-            EditorGUILayout.PropertyField(multiplierParamProp, new GUIContent("State Speed Multiplier Parameter"));
+            // v4: Stacked layout here too � same fix as the field's other occurrence above.
+            EditorGUILayout.LabelField("State Speed Multiplier Parameter");
+            EditorGUILayout.PropertyField(multiplierParamProp, GUIContent.none);
             serializedObject.ApplyModifiedProperties();
         }
 
