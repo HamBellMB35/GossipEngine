@@ -15,27 +15,29 @@ namespace TownsPeople.CustomEditor
     // NOTE: This wizard automates the creation of modular NPC prefabs.
     // The CanvasGroup hierarchy has been permanently patched, and UI font sizing is now fully exposed for Asset Store distribution.
     //
-    // v4: Generated NPCArchetypeConfiguration assets no longer dump into Assets/ root.
-    // Added a configurable Output Folder field (with Browse button) that's auto-created,
-    // including nested subfolders, if it doesn't already exist. Also added UX polish: the
-    // Generate button is now disabled with an explanatory HelpBox instead of only failing
-    // after the click, and the generated asset is pinged in the Project window.
-    //
     // v25: The per-NPC AudioSource previously had no spatial configuration at all — now
-    // configured as a real 3D spatial source at generation time, with Min Distance / Max
-    // Distance / Rolloff Mode exposed as tunable wizard fields.
+    // configured as a real 3D spatial source at generation time.
     //
     // v26: New NPCs previously always spawned at world origin (0,0,0) — now optionally
     // positioned at whatever point the Scene view camera is currently looking at.
     //
-    // v27: Every full NPC (Common/Vendor/QuestGiver — everything except NonDialogue_NPC, which
-    // has no NPCGossipMemory and can therefore never be counted as a witness by
-    // PlayerDeedBroadcaster) now automatically gets an NPCWitnessReaction component, defaulting
-    // to Present Rumor mode (purely additive — no behavior change unless a developer later
-    // switches an NPC to Play Animation). Its Animator and Reaction Animation States are
-    // pre-populated exactly as if it had just been manually added via Add Component — Reset()
-    // doesn't fire from a scripted AddComponent() call, so this replicates that same population
-    // logic directly here (reusing NPCWitnessReaction.CollectAllStateNames, now public).
+    // v27: Every full NPC (Common/Vendor/QuestGiver) now automatically gets an
+    // NPCWitnessReaction component, defaulting to Present Rumor mode.
+    //
+    // v28: Generated NPC GameObject naming changed from "NPC_AssetStore_<name>" to
+    // "TownsPeople_NPC_<name>".
+    //
+    // v29: Locomotion add-on integration. Every reference to Locomotion-specific types
+    // (LocomotionAgent, LocomotionRootMotionRelay) goes through Type.GetType() reflection
+    // rather than a direct compile-time reference — Locomotion is a separate, optional add-on
+    // that will not be present in every buyer's project, and this file must compile and
+    // function correctly whether or not it's installed. When present and the "Include
+    // Locomotion" toggle is checked, generated NPCs get LocomotionAgent (wired) and
+    // LocomotionRootMotionRelay (on the mesh child), with per-pose playback rates auto-synced
+    // from a Blend Tree state named "Locomotion" if one exists, and NPCAnimationBridge's
+    // Animation Layer Index defaulted to 1 to match Locomotion's recommended 2-layer Animator
+    // setup. Available for every NPC variant, including Non-Dialogue — unlike
+    // NPCWitnessReaction, Locomotion has no dependency on NPCGossipMemory at all.
 
     /// <summary>
     /// Professional asset store pipeline wizard window that dynamically scans project assemblies.
@@ -65,9 +67,8 @@ namespace TownsPeople.CustomEditor
         // --- Editable UI & Prompt Parameters ---
         private string _promptTextString = "Talk [E]";
         private float _canvasHeightOffset = 2.2f;
-        private float _dialogueFontSize = 10f; // Exposed font size variable, defaulting to 10
+        private float _dialogueFontSize = 10f;
 
-        // Sizing Parameters Locked Permanently at 150x35
         private Vector2 _canvasDimensions = new Vector2(150f, 35f);
         private Color _promptBgColor = new Color(0.1f, 0.1f, 0.1f, 0.85f);
         private Color _speechBgColor = new Color(0.15f, 0.15f, 0.15f, 0.90f);
@@ -75,6 +76,10 @@ namespace TownsPeople.CustomEditor
 
         private bool _hasVendorAddon = false;
         private bool _hasQuestAddon = false;
+        private bool _hasLocomotionAddon = false;
+
+        [Tooltip("Adds LocomotionAgent (NavMesh-driven movement, Walk/Run speed tiers, turn anticipation) and LocomotionRootMotionRelay to this NPC, fully wired. Also defaults NPCAnimationBridge's Animation Layer Index to 1, matching Locomotion's recommended 2-layer Animator setup. If a Blend Tree state named exactly \"Locomotion\" exists in the shared Animator Controller, its per-pose playback rates are auto-synced too. Only shown if the Locomotion add-on is detected in the project.")]
+        private bool _includeLocomotion = false;
 
         [Tooltip("If enabled, this NPC gets NPCRumorIndicator — an optional visual debug tool that spawns a small colored sphere above its head for each rumor it currently knows.")]
         private bool _includeRumorIndicator = false;
@@ -88,7 +93,6 @@ namespace TownsPeople.CustomEditor
         [Tooltip("Shared library of generic Positive/Negative reactions, used by full NPCs as their rumor fallback and by Non-Dialogue NPCs as their only response source.")]
         private TownsPeople.Data.GeneralRumorResponseLibrary _responseLibrary;
 
-        // v18: Added for the scroll view wrapping OnGUI's content.
         private Vector2 _scrollPosition;
 
         [Tooltip("Local position offset (within the NPC's worldspace UI canvas) where the speech bubble appears.")]
@@ -104,22 +108,17 @@ namespace TownsPeople.CustomEditor
         private Color _promptFillTop = new Color(0.16f, 0.16f, 0.16f, 0.9f);
         private Color _promptFillBottom = new Color(0.06f, 0.06f, 0.06f, 0.9f);
 
-        // v25: NPC audio spatialization.
         [Tooltip("Full volume within this distance (world units) from the NPC. Below this, the player hears rumor/greeting/response audio at 100% regardless of exact distance.")]
         private float _npcAudioMinDistance = 2f;
 
         [Tooltip("Beyond this distance (world units), the NPC's audio is inaudible.")]
         private float _npcAudioMaxDistance = 15f;
 
-        [Tooltip("How volume falls off between Min and Max Distance. Logarithmic (Unity's default) sounds most natural for most cases; Linear falls off evenly; Custom lets you edit the AudioSource's rolloff curve by hand afterward.")]
+        [Tooltip("How volume falls off between Min and Max Distance.")]
         private AudioRolloffMode _npcAudioRolloffMode = AudioRolloffMode.Logarithmic;
 
-        // v24: Shared with DialogueMenuUIWizard's output location — generated UI assets from
-        // either wizard live in the same place, separate from _outputFolderPath (which is
-        // specifically for NPC profile .asset files).
         private const string UiOutputFolder = "Assets/NPC Creator/Generated UI";
 
-        // v19: 3D pressable button rendering — see DrawGenerateButton().
         private bool _generateButtonPressed;
         private Texture2D _btnNormalTex;
         private Texture2D _btnHoverTex;
@@ -139,6 +138,7 @@ namespace TownsPeople.CustomEditor
         {
             _hasVendorAddon = Type.GetType("TownsPeople.GamePlay.VendorComponentAddon") != null;
             _hasQuestAddon = Type.GetType("TownsPeople.GamePlay.QuestComponentAddon") != null;
+            _hasLocomotionAddon = Type.GetType("TownsPeople.GamePlay.LocomotionAgent") != null;
         }
 
         // --- Editor GUI Layout ---
@@ -151,7 +151,6 @@ namespace TownsPeople.CustomEditor
             EditorGUILayout.LabelField("Automated multi-layer UI creation pipeline for Asset Store deployment.", EditorStyles.miniLabel);
             EditorGUILayout.Space();
 
-            // Core Identity Parameters
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Core Identity Parameters", EditorStyles.boldLabel);
             _npcName = EditorGUILayout.TextField("NPC Display Name", _npcName);
@@ -161,7 +160,6 @@ namespace TownsPeople.CustomEditor
 
             EditorGUILayout.Space();
 
-            // v26: Spawn Placement — where the new NPC lands on generation.
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Spawn Placement", EditorStyles.boldLabel);
             _spawnAtSceneCameraFocus = EditorGUILayout.ToggleLeft(
@@ -169,15 +167,14 @@ namespace TownsPeople.CustomEditor
                 _spawnAtSceneCameraFocus);
             GUI.enabled = _spawnAtSceneCameraFocus;
             _spawnFallbackDistance = EditorGUILayout.FloatField(
-                new GUIContent("Fallback Distance", "Used only if the camera's look-ray doesn't hit any collider (e.g. aimed at open sky) — spawns this many units in front of the camera instead."),
+                new GUIContent("Fallback Distance", "Used only if the camera's look-ray doesn't hit any collider — spawns this many units in front of the camera instead."),
                 _spawnFallbackDistance);
             GUI.enabled = true;
-            EditorGUILayout.HelpBox("Requires an active Scene view with colliders in it (e.g. your ground/floor) to land precisely. If disabled, or no Scene view is open, the NPC spawns at world origin as before.", MessageType.None);
+            EditorGUILayout.HelpBox("Requires an active Scene view with colliders in it to land precisely. If disabled, or no Scene view is open, the NPC spawns at world origin as before.", MessageType.None);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
 
-            // v4: Output Settings — where generated profile assets get saved.
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Output Settings", EditorStyles.boldLabel);
             EditorGUILayout.BeginHorizontal();
@@ -204,7 +201,6 @@ namespace TownsPeople.CustomEditor
 
             EditorGUILayout.Space();
 
-            // Conditional Archetype Targeting
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Entity Role Archetype Selection", EditorStyles.boldLabel);
             _selectedVariant = (NpcVariantType)EditorGUILayout.EnumPopup("Target NPC Variant Role", _selectedVariant);
@@ -221,7 +217,7 @@ namespace TownsPeople.CustomEditor
             }
             if (_selectedVariant == NpcVariantType.NonDialogue_NPC)
             {
-                EditorGUILayout.HelpBox("Skips the full rumor/gossip system entirely (no NPCGossipMemory, no rumor indicator, no witness reaction). Only ever greets the player with a reputation-driven Positive/Negative response from the General Response Library below. Lighter weight — intended for background/ambient NPCs.", MessageType.Info);
+                EditorGUILayout.HelpBox("Skips the full rumor/gossip system entirely (no NPCGossipMemory, no rumor indicator, no witness reaction). Locomotion remains available if enabled below. Only ever greets the player with a reputation-driven Positive/Negative response from the General Response Library below.", MessageType.Info);
             }
 
             EditorGUILayout.BeginHorizontal();
@@ -234,7 +230,6 @@ namespace TownsPeople.CustomEditor
 
             EditorGUILayout.Space();
 
-            // Visual Prompt & Text Configurations
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Visual Prompt & UI Canvas Formats", EditorStyles.boldLabel);
 
@@ -245,14 +240,12 @@ namespace TownsPeople.CustomEditor
             _canvasHeightOffset = EditorGUILayout.FloatField("Canvas Height Offset (3D)", _canvasHeightOffset);
             _dialogueFontSize = EditorGUILayout.FloatField("Speech Bubble Font Size", _dialogueFontSize);
             _speechBubbleOffset = EditorGUILayout.Vector3Field(
-                new GUIContent("Speech Bubble Offset", "Local position (within the worldspace UI canvas) where the speech bubble appears, relative to the prompt."),
+                new GUIContent("Speech Bubble Offset", "Local position where the speech bubble appears, relative to the prompt."),
                 _speechBubbleOffset);
             _nameplateOffset = EditorGUILayout.Vector3Field(
-                new GUIContent("Nameplate Offset", "Local position (within the worldspace UI canvas) where the nameplate appears."),
+                new GUIContent("Nameplate Offset", "Local position where the nameplate appears."),
                 _nameplateOffset);
 
-            // v5: Unlocked — Master Canvas Dimensions is now fully editable instead of
-            // GUI.enabled-locked to a fixed 150x35 value.
             _canvasDimensions = EditorGUILayout.Vector2Field("Master Canvas Dimensions", _canvasDimensions);
 
             EditorGUILayout.Space();
@@ -264,8 +257,6 @@ namespace TownsPeople.CustomEditor
 
             EditorGUILayout.Space();
 
-            // v24: [E] prompt visual style — rounded corners, border, gradient, matching the
-            // dialogue menu's look. Superseded the old flat "Interaction Prompt BG Color" field.
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("[E] Prompt Visual Style", EditorStyles.boldLabel);
             _promptCornerRadius = EditorGUILayout.Slider("Corner Radius", _promptCornerRadius, 0f, 24f);
@@ -273,12 +264,11 @@ namespace TownsPeople.CustomEditor
             _promptBorderColor = EditorGUILayout.ColorField("Border Color", _promptBorderColor);
             _promptFillTop = EditorGUILayout.ColorField("Fill (Top)", _promptFillTop);
             _promptFillBottom = EditorGUILayout.ColorField("Fill (Bottom)", _promptFillBottom);
-            EditorGUILayout.HelpBox("Shared across every generated NPC — regenerating any NPC after changing these values updates the look for all of them, since they reference the same generated sprite asset.", MessageType.None);
+            EditorGUILayout.HelpBox("Shared across every generated NPC — regenerating any NPC after changing these values updates the look for all of them.", MessageType.None);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
 
-            // v25: NPC audio spatialization.
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("NPC Audio Spatialization", EditorStyles.boldLabel);
             _npcAudioMinDistance = EditorGUILayout.FloatField(
@@ -287,59 +277,69 @@ namespace TownsPeople.CustomEditor
                 new GUIContent("Max Distance", "Beyond this distance, the NPC's audio is inaudible."), _npcAudioMaxDistance);
             _npcAudioRolloffMode = (AudioRolloffMode)EditorGUILayout.EnumPopup(
                 new GUIContent("Rolloff Mode", "How volume falls off between Min and Max Distance."), _npcAudioRolloffMode);
-            EditorGUILayout.HelpBox("Controls how far away the player can hear this NPC's rumor/greeting/response audio, and how it fades with distance. Applies to newly generated NPCs only — existing NPCs in a scene need their AudioSource updated manually (Spatial Blend → 3D, then set Min/Max Distance to match) or need to be regenerated.", MessageType.None);
+            EditorGUILayout.HelpBox("Applies to newly generated NPCs only.", MessageType.None);
             EditorGUILayout.EndVertical();
 
-            // Debug/visualization add-on toggle.
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Debug & Visualization", EditorStyles.boldLabel);
             GUI.enabled = _selectedVariant != NpcVariantType.NonDialogue_NPC;
             _includeRumorIndicator = EditorGUILayout.ToggleLeft(
-                new GUIContent("Include Rumor Indicator", "Spawns a small colored sphere above this NPC's head for each rumor it currently knows. Purely cosmetic/debug — safe to leave off. Unavailable on Non-Dialogue NPCs (no rumor memory to track)."),
+                new GUIContent("Include Rumor Indicator", "Spawns a small colored sphere above this NPC's head for each rumor it currently knows. Unavailable on Non-Dialogue NPCs."),
                 _includeRumorIndicator);
             GUI.enabled = true;
-            EditorGUILayout.HelpBox("NPCWitnessReaction is now added automatically to every full NPC (Common/Vendor/Quest Giver) — defaulting to Present Rumor mode, so nothing changes unless you later switch an individual NPC to Play Animation. Not added to Non-Dialogue NPCs (they're never counted as witnesses).", MessageType.None);
+            EditorGUILayout.HelpBox("NPCWitnessReaction is added automatically to every full NPC — defaulting to Present Rumor mode. Not added to Non-Dialogue NPCs.", MessageType.None);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
 
-            // v16: NonDialogue_NPC is now a variant option (selected above) rather than a
-            // separate toggle. This section just holds the shared response library field.
+            // v29: Locomotion — fully optional add-on. Toggle only shown/usable if the add-on
+            // is actually present in the project (reflection-detected in OnEnable), same
+            // pattern already used for Vendor/Quest.
+            EditorGUILayout.BeginVertical("box");
+            GUILayout.Label("Locomotion (Add-on)", EditorStyles.boldLabel);
+            if (!_hasLocomotionAddon)
+            {
+                EditorGUILayout.HelpBox("Locomotion add-on not detected in this project — install it to enable NavMesh-driven wandering/route-walking for generated NPCs.", MessageType.Info);
+                _includeLocomotion = false;
+            }
+            else
+            {
+                _includeLocomotion = EditorGUILayout.ToggleLeft(
+                    new GUIContent("Include Locomotion", "Adds LocomotionAgent and LocomotionRootMotionRelay, fully wired. Also defaults this NPC's NPCAnimationBridge Animation Layer Index to 1 to match Locomotion's recommended 2-layer Animator setup (Base Layer = Locomotion Blend Tree, Layer 1 = Reactions). Per-pose playback rates auto-sync if a Blend Tree state named exactly \"Locomotion\" exists — otherwise sync manually afterward via LocomotionAgent's own Inspector."),
+                    _includeLocomotion);
+                EditorGUILayout.HelpBox("Available for every NPC variant, including Non-Dialogue — Locomotion has no dependency on NPCGossipMemory/dialogue at all.", MessageType.None);
+            }
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space();
+
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Responses", EditorStyles.boldLabel);
             _responseLibrary = (TownsPeople.Data.GeneralRumorResponseLibrary)EditorGUILayout.ObjectField(
-                new GUIContent("General Response Library", "Shared Positive/Negative response pools. Required for Non-Dialogue NPCs (their only response source); optional for full NPCs (used as their rumor fallback)."),
+                new GUIContent("General Response Library", "Required for Non-Dialogue NPCs; optional for full NPCs."),
                 _responseLibrary, typeof(TownsPeople.Data.GeneralRumorResponseLibrary), false);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space();
 
-            // v11: Reputation settings — every generated NPC gets NPCReputationOpinion by
-            // default (it's core infrastructure, not an optional add-on), so this just lets
-            // you set its faction at creation time instead of hunting it down afterward.
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Reputation", EditorStyles.boldLabel);
             _factionId = EditorGUILayout.TextField(
-                new GUIContent("Faction ID (optional)", "Sets this NPC's NPCReputationOpinion faction. Leave empty to use only general reputation."),
+                new GUIContent("Faction ID (optional)", "Sets this NPC's NPCReputationOpinion faction."),
                 _factionId);
             _voiceGender = (TownsPeople.Data.VoiceGender)EditorGUILayout.EnumPopup(
-                new GUIContent("Voice Gender", "Which gendered voice line this NPC uses for rumor/response audio that provides both a Male and Female clip."),
+                new GUIContent("Voice Gender", "Which gendered voice line this NPC uses."),
                 _voiceGender);
             EditorGUILayout.EndVertical();
 
             GUILayout.FlexibleSpace();
 
-            // v4: Generate button is now disabled (with an explanation) instead of only
-            // failing after the click — buyers see why they can't proceed immediately.
             bool canGenerate = _meshModel != null;
             if (!canGenerate)
             {
                 EditorGUILayout.HelpBox("Assign a 3D Mesh Asset / Prefab above before generating.", MessageType.Warning);
             }
 
-            // v19: Custom 3D pressable button — drop-shadow at rest, gradient background,
-            // hover highlight, and visibly shifts down while held (shadow disappears),
-            // instead of the flat default IMGUI button.
             DrawGenerateButton($"GENERATE COMPLETE {_selectedVariant.ToString().ToUpper()}", canGenerate);
 
             EditorGUILayout.EndScrollView();
@@ -383,11 +383,6 @@ namespace TownsPeople.CustomEditor
             return tex;
         }
 
-        /// <summary>
-        /// Draws a button with a drop-shadow (raised look at rest), gradient fill, hover
-        /// highlight, and a visible downward shift + shadow removal while the mouse is held on
-        /// it — a real "3D pressable" feel rather than a flat default IMGUI button.
-        /// </summary>
         private void DrawGenerateButton(string label, bool enabled)
         {
             EnsureButtonAssets();
@@ -409,19 +404,6 @@ namespace TownsPeople.CustomEditor
                 }
                 else if (evt.type == EventType.MouseUp && evt.button == 0)
                 {
-                    // v21: BUG FIX — previously called ExecuteEntityGeneration() directly here,
-                    // then reset _generateButtonPressed afterward. AssetDatabase.CreateAsset
-                    // (deep inside ExecuteEntityGeneration) can trigger Unity's Project window
-                    // to refresh mid-event, which throws ExitGUIException to unwind the current
-                    // OnGUI call — skipping right past that reset (button got stuck visually
-                    // pressed) and cutting ExecuteEntityGeneration itself short (no success
-                    // dialog, no selection/ping of the new NPC, even though generation itself
-                    // likely still completed).
-                    //
-                    // Fixed two ways: state cleanup now happens BEFORE the risky call, and the
-                    // actual generation is deferred to the next editor update tick via
-                    // EditorApplication.delayCall — fully outside any GUI event, so
-                    // ExitGUIException can't interrupt it at all.
                     bool shouldGenerate = _generateButtonPressed && isMouseOver;
                     _generateButtonPressed = false;
                     evt.Use();
@@ -435,8 +417,6 @@ namespace TownsPeople.CustomEditor
 
             bool isPressed = enabled && _generateButtonPressed;
 
-            // Drop-shadow: visible at rest (gives the raised/3D look), gone while pressed
-            // (reinforces the "sunk in" feel alongside the position shift below).
             if (!isPressed)
             {
                 Rect shadowRect = baseRect;
@@ -447,7 +427,7 @@ namespace TownsPeople.CustomEditor
             Rect drawRect = baseRect;
             if (isPressed)
             {
-                drawRect.y += 2f; // The actual "moves down when pressed" effect.
+                drawRect.y += 2f;
             }
 
             Texture2D texToUse = !enabled ? _btnDisabledTex : isPressed ? _btnActiveTex : isMouseOver ? _btnHoverTex : _btnNormalTex;
@@ -456,18 +436,10 @@ namespace TownsPeople.CustomEditor
 
             if (isMouseOver || isPressed)
             {
-                Repaint(); // Keep hover/press visuals responsive to mouse movement.
+                Repaint();
             }
         }
 
-        /// <summary>
-        /// v26: Computes where a newly generated NPC should spawn — either the point the
-        /// active Scene view camera is currently looking at (raycast from its position along
-        /// its forward direction), or world origin if that's disabled/unavailable. If the ray
-        /// doesn't hit any collider within SpawnRaycastMaxDistance, falls back to a fixed
-        /// distance directly in front of the camera rather than the ray's origin — landing the
-        /// NPC somewhere sensible/visible instead of at the camera itself.
-        /// </summary>
         private Vector3 ComputeSpawnPosition()
         {
             if (!_spawnAtSceneCameraFocus)
@@ -478,7 +450,7 @@ namespace TownsPeople.CustomEditor
             SceneView sceneView = SceneView.lastActiveSceneView;
             if (sceneView == null || sceneView.camera == null)
             {
-                Debug.LogWarning("<color=orange>[NPC Creator Wizard]</color> 'Spawn At Scene View Camera Focus' is enabled, but no active Scene view was found — spawning at world origin instead. Open a Scene view tab and try again for camera-relative placement.");
+                Debug.LogWarning("<color=orange>[NPC Creator Wizard]</color> 'Spawn At Scene View Camera Focus' is enabled, but no active Scene view was found — spawning at world origin instead.");
                 return Vector3.zero;
             }
 
@@ -493,10 +465,6 @@ namespace TownsPeople.CustomEditor
             return lookRay.GetPoint(_spawnFallbackDistance);
         }
 
-        /// <summary>
-        /// Converts an absolute OS path (from OpenFolderPanel) into a project-relative
-        /// "Assets/..." path. Returns null if the folder isn't inside this project.
-        /// </summary>
         private string ConvertToProjectRelativePath(string absolutePath)
         {
             string projectDataPath = Application.dataPath.Replace("\\", "/");
@@ -511,16 +479,12 @@ namespace TownsPeople.CustomEditor
             return relative;
         }
 
-        /// <summary>
-        /// Creates every missing folder along the given path (e.g. "Assets/NPC Creator/Generated Profiles"
-        /// creates both "NPC Creator" and "Generated Profiles" if neither exists yet).
-        /// </summary>
         private static void EnsureFolderExists(string folderPath)
         {
             if (AssetDatabase.IsValidFolder(folderPath)) return;
 
             string[] parts = folderPath.Split('/');
-            string currentPath = parts[0]; // Expected to be "Assets"
+            string currentPath = parts[0];
 
             for (int i = 1; i < parts.Length; i++)
             {
@@ -533,16 +497,8 @@ namespace TownsPeople.CustomEditor
             }
         }
 
-        /// <summary>
-        /// v6: Returns a name guaranteed not to collide with any NPC currently in the open
-        /// scene (checked by NPCGossipMemory.NpcName, case-insensitive). If "Vanessa" already
-        /// exists, returns "Vanessa_1"; if that also exists, "Vanessa_2", and so on.
-        /// </summary>
         private string GetUniqueNpcName(string baseName)
         {
-            // v7: FindObjectsOfType<T>(bool) is deprecated. FindObjectsByType requires an
-            // explicit sort mode — we don't need results sorted by InstanceID here, so
-            // FindObjectsSortMode.None is both correct and faster.
             NPCGossipMemory[] existingNpcs = UnityEngine.Object.FindObjectsByType<NPCGossipMemory>(
                 FindObjectsInactive.Include);
 
@@ -566,11 +522,6 @@ namespace TownsPeople.CustomEditor
             return candidate;
         }
 
-        /// <summary>
-        /// v9: Returns the index of the given layer, creating it as a new user layer
-        /// (in the first free slot, 8-31) if it doesn't already exist. This directly edits
-        /// ProjectSettings/TagManager.asset, the same file the Tags & Layers window edits.
-        /// </summary>
         private static int EnsureLayerExists(string layerName)
         {
             int existingIndex = LayerMask.NameToLayer(layerName);
@@ -580,7 +531,6 @@ namespace TownsPeople.CustomEditor
                 AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
             SerializedProperty layersProp = tagManager.FindProperty("layers");
 
-            // User layers start at index 8 (0-7 are Unity's built-in layers).
             for (int i = 8; i < layersProp.arraySize; i++)
             {
                 SerializedProperty layerSlot = layersProp.GetArrayElementAtIndex(i);
@@ -593,13 +543,10 @@ namespace TownsPeople.CustomEditor
                 }
             }
 
-            Debug.LogWarning($"<color=orange>[NPC Creator Wizard]</color> No free layer slots available (8-31 all in use) — could not create '{layerName}' layer. NPC will be left on its current layer.");
+            Debug.LogWarning($"<color=orange>[NPC Creator Wizard]</color> No free layer slots available — could not create '{layerName}' layer.");
             return -1;
         }
 
-        /// <summary>
-        /// Sets a layer on a GameObject and every one of its children, recursively.
-        /// </summary>
         private static void SetLayerRecursively(GameObject target, int layer)
         {
             target.layer = layer;
@@ -611,9 +558,6 @@ namespace TownsPeople.CustomEditor
 
         // --- Core Generation Pipeline ---
 
-        /// <summary>
-        /// Executes the deterministic compilation of the complete NPC prefab hierarchy.
-        /// </summary>
         private void ExecuteEntityGeneration()
         {
             if (_meshModel == null)
@@ -622,30 +566,19 @@ namespace TownsPeople.CustomEditor
                 return;
             }
 
-            // Step 1: Core Node Layout
-            // v6: Resolve a collision-free name before anything else, so it's used
-            // consistently for the GameObject, NpcName, and the saved profile asset.
             string resolvedName = GetUniqueNpcName(_npcName);
 
             GameObject rootInstance = new GameObject($"TownsPeople_NPC_{resolvedName}");
             Undo.RegisterCreatedObjectUndo(rootInstance, "Create Modular NPC Root");
 
-            // v26: Position the root at the computed spawn point BEFORE anything gets parented
-            // under it — children below use localPosition, so they inherit this world position
-            // automatically once parented.
             rootInstance.transform.position = ComputeSpawnPosition();
 
-            // v9: Every generated NPC defaults to the "NPC" layer (created automatically if
-            // it doesn't exist yet), applied to the whole hierarchy. This gives
-            // PlayerDeedBroadcaster's Npc Layer Mask something real to filter witness
-            // detection on, instead of leaving it at "Everything".
             int npcLayer = EnsureLayerExists("NPC");
             if (npcLayer != -1)
             {
                 SetLayerRecursively(rootInstance, npcLayer);
             }
 
-            // Step 2: Visuals & Animator Automation
             GameObject meshInstance = (GameObject)PrefabUtility.InstantiatePrefab(_meshModel, rootInstance.transform);
             meshInstance.name = "Character_Visual_Mesh";
             meshInstance.transform.localPosition = Vector3.zero;
@@ -675,13 +608,10 @@ namespace TownsPeople.CustomEditor
                 Debug.LogWarning($"<color=orange>[Animator Notice]</color> Controller '{customAnimatorName}' not found. Assigning default fallback.");
             }
 
-            // Step 3: Mechanical Baseline Systems
             SphereCollider proxCollider = rootInstance.AddComponent<SphereCollider>();
             proxCollider.isTrigger = true;
             proxCollider.radius = 4.0f;
 
-            // v15: Full NPCs get NPCGossipMemory (rumor tracking + presentation); Non-Dialogue
-            // NPCs get the lighter NPCGreetingResponder instead, with no rumor memory at all.
             NPCGossipMemory localMemory = null;
 
             if (_selectedVariant != NpcVariantType.NonDialogue_NPC)
@@ -712,7 +642,6 @@ namespace TownsPeople.CustomEditor
 
             NPCProximityGossip proximityLogic = rootInstance.AddComponent<NPCProximityGossip>();
 
-            // v25: Configured as a real 3D spatial source.
             AudioSource npcAudioSource = rootInstance.AddComponent<AudioSource>();
             npcAudioSource.spatialBlend = 1f;
             npcAudioSource.rolloffMode = _npcAudioRolloffMode;
@@ -720,22 +649,24 @@ namespace TownsPeople.CustomEditor
             npcAudioSource.maxDistance = _npcAudioMaxDistance;
             npcAudioSource.playOnAwake = false;
 
-            // v5: Every generated NPC now gets an NPCAnimationBridge automatically — previously
-            // this had to be added by hand, meaning tone-driven animation and the exit-revert
-            // fix silently didn't work until someone noticed and added it manually.
             NPCAnimationBridge animBridge = rootInstance.AddComponent<NPCAnimationBridge>();
             SerializedObject serializedAnimBridge = new SerializedObject(animBridge);
             serializedAnimBridge.FindProperty("_animator").objectReferenceValue = characterAnimator;
+
+            // v29: Locomotion's recommended Animator setup splits reactive animations onto a
+            // dedicated upper layer (index 1, Override blend, Empty default state) separate
+            // from the Locomotion Blend Tree on the Base Layer — default this NPC's reactive-
+            // animation layer to match when Locomotion is included. Purely a starting default;
+            // freely editable afterward, same as any other generated field.
+            if (_includeLocomotion && _hasLocomotionAddon)
+            {
+                serializedAnimBridge.FindProperty("_animationLayerIndex").intValue = 1;
+            }
+
             serializedAnimBridge.ApplyModifiedProperties();
 
-            // Every generated NPC gets an NpcAddonRegistry so add-ons (Vendor, Quest Giver, etc.)
-            // are discoverable at runtime via TryGetAddon<T>() instead of raw GetComponent calls.
             rootInstance.AddComponent<NpcAddonRegistry>();
 
-            // v11: Every generated NPC now gets NPCReputationOpinion by default — this is core
-            // Reputation System infrastructure (roadmap Section 4), not an "Advanced Add-on"
-            // like Vendor/Quest/Locomotion, so it shouldn't require opting in. Everything that
-            // reads it already null-checks for its absence, so this is purely additive.
             NPCReputationOpinion reputationOpinion = rootInstance.AddComponent<NPCReputationOpinion>();
             if (!string.IsNullOrEmpty(_factionId))
             {
@@ -744,32 +675,21 @@ namespace TownsPeople.CustomEditor
                 serializedOpinion.ApplyModifiedProperties();
             }
 
-            // Only added for full NPCs — Non-Dialogue NPCs have no NPCGossipMemory for this to
-            // require, and the toggle is disabled in the GUI for them anyway.
             if (_includeRumorIndicator && _selectedVariant != NpcVariantType.NonDialogue_NPC)
             {
                 rootInstance.AddComponent<NPCRumorIndicator>();
             }
 
-            // v27: Every full NPC now automatically gets NPCWitnessReaction, defaulting to
-            // Present Rumor mode (purely additive — no behavior change unless later switched to
-            // Play Animation on a per-NPC basis). Not added to Non-Dialogue NPCs, which have no
-            // NPCGossipMemory and are therefore never counted as witnesses by
-            // PlayerDeedBroadcaster in the first place. _animator and the full states list are
-            // pre-populated here directly — Reset() (which normally does this when the
-            // component is added manually via the Inspector) doesn't fire from a scripted
-            // AddComponent() call, so this replicates the same logic using the now-public
-            // NPCWitnessReaction.CollectAllStateNames().
             if (_selectedVariant != NpcVariantType.NonDialogue_NPC)
             {
                 NPCWitnessReaction witnessReaction = rootInstance.AddComponent<NPCWitnessReaction>();
                 SerializedObject serializedWitnessReaction = new SerializedObject(witnessReaction);
                 serializedWitnessReaction.FindProperty("_animator").objectReferenceValue = characterAnimator;
 
-                AnimatorController generatedController = characterAnimator.runtimeAnimatorController as AnimatorController;
-                if (generatedController != null)
+                AnimatorController generatedControllerForWitness = characterAnimator.runtimeAnimatorController as AnimatorController;
+                if (generatedControllerForWitness != null)
                 {
-                    List<string> allStates = NPCWitnessReaction.CollectAllStateNames(generatedController);
+                    List<string> allStates = NPCWitnessReaction.CollectAllStateNames(generatedControllerForWitness);
                     SerializedProperty statesProp = serializedWitnessReaction.FindProperty("_reactionAnimationStates");
                     statesProp.ClearArray();
                     for (int i = 0; i < allStates.Count; i++)
@@ -780,6 +700,69 @@ namespace TownsPeople.CustomEditor
                 }
 
                 serializedWitnessReaction.ApplyModifiedProperties();
+            }
+
+            // v29: Locomotion — deliberately available for EVERY variant, including
+            // Non-Dialogue (unlike NPCWitnessReaction above), since Locomotion has zero
+            // dependency on NPCGossipMemory/dialogue at all — a wandering townsperson using
+            // the lightweight NonDialogue_NPC variant is exactly the use case this was built
+            // for. Every Locomotion type is resolved via Type.GetType() rather than a direct
+            // reference, so this whole block is a complete no-op (and this file still compiles
+            // cleanly) in a project that doesn't have the Locomotion add-on installed.
+            if (_includeLocomotion && _hasLocomotionAddon)
+            {
+                Type locomotionAgentType = Type.GetType("TownsPeople.GamePlay.LocomotionAgent");
+                Type locomotionRelayType = Type.GetType("TownsPeople.GamePlay.LocomotionRootMotionRelay");
+
+                if (locomotionAgentType != null)
+                {
+                    Component locomotionAgentComponent = rootInstance.AddComponent(locomotionAgentType);
+                    SerializedObject serializedLocomotion = new SerializedObject(locomotionAgentComponent);
+
+                    SerializedProperty locomotionAnimatorProp = serializedLocomotion.FindProperty("_animator");
+                    if (locomotionAnimatorProp != null)
+                    {
+                        locomotionAnimatorProp.objectReferenceValue = characterAnimator;
+                    }
+
+                    // Auto-sync per-pose playback rates from a Blend Tree state named exactly
+                    // "Locomotion" (this project's established naming convention). Never
+                    // guesses at an unrelated tree if that convention isn't followed — simply
+                    // skipped, leaving the list empty for manual sync afterward.
+                    AnimatorController generatedController = characterAnimator.runtimeAnimatorController as AnimatorController;
+                    if (generatedController != null)
+                    {
+                        BlendTree locomotionTree = FindNamedBlendTree(generatedController, "Locomotion");
+                        if (locomotionTree != null)
+                        {
+                            SerializedProperty posesProp = serializedLocomotion.FindProperty("_posePlaybackRates");
+                            if (posesProp != null)
+                            {
+                                posesProp.ClearArray();
+
+                                List<ChildMotion> sortedChildren = locomotionTree.children.OrderBy(c => c.threshold).ToList();
+                                for (int i = 0; i < sortedChildren.Count; i++)
+                                {
+                                    posesProp.InsertArrayElementAtIndex(i);
+                                    SerializedProperty entryProp = posesProp.GetArrayElementAtIndex(i);
+                                    string motionName = sortedChildren[i].motion != null ? sortedChildren[i].motion.name : "(empty)";
+                                    entryProp.FindPropertyRelative("MotionName").stringValue = motionName;
+                                    entryProp.FindPropertyRelative("Threshold").floatValue = sortedChildren[i].threshold;
+                                    entryProp.FindPropertyRelative("Multiplier").floatValue = 1f;
+                                }
+                            }
+                        }
+                    }
+
+                    serializedLocomotion.ApplyModifiedProperties();
+                }
+
+                if (locomotionRelayType != null)
+                {
+                    // Lives on the mesh child, not the NPC root — OnAnimatorMove() only fires
+                    // on the same GameObject as the Animator component.
+                    meshInstance.AddComponent(locomotionRelayType);
+                }
             }
 
             // Step 4: Automated Master Worldspace UI Canvas
@@ -797,13 +780,8 @@ namespace TownsPeople.CustomEditor
             canvasRect.sizeDelta = _canvasDimensions;
             canvasRect.localScale = new Vector3(0.01f, 0.01f, 0.01f);
 
-            // v13: Added — without this, the canvas only reads correctly from whatever angle
-            // it happened to be facing when generated. Billboard keeps both the [E] prompt and
-            // the speech bubble (its children) facing the camera continuously.
             canvasObj.AddComponent<Billboard>();
 
-            // v20: ELEMENT 0: NAMEPLATE — shown above the prompt/bubble, fading in/out based
-            // on player distance (see NPCNameplate on rootInstance below).
             GameObject nameplateObj = new GameObject("NPC_Nameplate");
             nameplateObj.transform.SetParent(canvasObj.transform, false);
 
@@ -827,12 +805,10 @@ namespace TownsPeople.CustomEditor
             serializedNameplate.FindProperty("_positionOffset").vector3Value = _nameplateOffset;
             serializedNameplate.ApplyModifiedProperties();
 
-            // ELEMENT 1: INTERACTION PROMPT BOX (Permanently Fixed Hierarchy)
             GameObject promptBackground = new GameObject("Graphic_Placeholder_Background");
             promptBackground.transform.SetParent(canvasObj.transform, false);
 
             CanvasGroup promptCanvasGroup = promptBackground.AddComponent<CanvasGroup>();
-            // v12: Added — the [E] prompt now fades via CanvasGroupFader instead of snapping.
             CanvasGroupFader promptFader = promptBackground.AddComponent<CanvasGroupFader>();
 
             Image promptBgImage = promptBackground.AddComponent<Image>();
@@ -841,7 +817,7 @@ namespace TownsPeople.CustomEditor
                 $"{UiOutputFolder}/PromptBackground.png", 64, _promptCornerRadius, _promptBorderThickness, _promptBorderColor, _promptFillTop, _promptFillBottom);
             promptBgImage.sprite = promptSprite;
             promptBgImage.type = Image.Type.Sliced;
-            promptBgImage.color = Color.white; // Tint stays neutral — gradient/border is baked into the sprite.
+            promptBgImage.color = Color.white;
 
             RectTransform promptBgRect = promptBackground.GetComponent<RectTransform>();
             promptBgRect.anchorMin = new Vector2(0f, 0f);
@@ -863,17 +839,12 @@ namespace TownsPeople.CustomEditor
             promptTextRect.anchorMax = Vector2.one;
             promptTextRect.sizeDelta = Vector2.zero;
 
-            // ELEMENT 2: SEPARATE SPEECH BUBBLE LAYER
             GameObject speechBubbleNode = new GameObject("NPC_Dialogue_Speech_Bubble");
             speechBubbleNode.transform.SetParent(canvasObj.transform, false);
 
             CanvasGroup speechCanvasGroup = speechBubbleNode.AddComponent<CanvasGroup>();
             NPCSpeechBubble speechBubble = speechBubbleNode.AddComponent<NPCSpeechBubble>();
 
-            // v22: Set via the component's own live-editable _positionOffset field (applied
-            // through OnValidate) instead of a one-time direct transform assignment — keeps
-            // the wizard's default and the component's ongoing Inspector control as a single
-            // source of truth.
             SerializedObject serializedSpeechBubble = new SerializedObject(speechBubble);
             serializedSpeechBubble.FindProperty("_positionOffset").vector3Value = _speechBubbleOffset;
             serializedSpeechBubble.ApplyModifiedProperties();
@@ -890,10 +861,7 @@ namespace TownsPeople.CustomEditor
             dialogueTextObj.transform.SetParent(speechBackground.transform, false);
             TextMeshProUGUI dialogueTmp = dialogueTextObj.AddComponent<TextMeshProUGUI>();
             dialogueTmp.alignment = TextAlignmentOptions.Center;
-
-            // NOTE: Font size is now dynamically controlled by the Wizard's exposed variable
             dialogueTmp.fontSize = _dialogueFontSize;
-
             dialogueTmp.text = "...";
 
             RectTransform dialogueTextRect = dialogueTextObj.GetComponent<RectTransform>();
@@ -901,13 +869,11 @@ namespace TownsPeople.CustomEditor
             dialogueTextRect.anchorMax = Vector2.one;
             dialogueTextRect.sizeDelta = Vector2.zero;
 
-            // Auto-wire proximity logic dependencies securely
             SerializedObject serializedLogic = new SerializedObject(proximityLogic);
             serializedLogic.FindProperty("speechBubble").objectReferenceValue = speechBubble;
             serializedLogic.FindProperty("interactionPromptFader").objectReferenceValue = promptFader;
             serializedLogic.ApplyModifiedProperties();
 
-            // Step 5: Screenspace Shopping Canvas Automation
             GameObject shopCanvasObj = new GameObject("NPC_Merchant_Market_Canvas");
             shopCanvasObj.transform.SetParent(rootInstance.transform);
             Canvas screenCanvas = shopCanvasObj.AddComponent<Canvas>();
@@ -939,7 +905,6 @@ namespace TownsPeople.CustomEditor
 
             shopCanvasObj.SetActive(false);
 
-            // Conditional Reflection Addons
             if (_selectedVariant == NpcVariantType.Vendor_NPC)
             {
                 Type vendorType = Type.GetType("TownsPeople.GamePlay.VendorComponentAddon");
@@ -951,15 +916,12 @@ namespace TownsPeople.CustomEditor
                 if (questType != null) rootInstance.AddComponent(questType);
             }
 
-            // Step 6: Data Compilation & Explicit Seeding
             NPCArchetypeConfiguration dataConfig = ScriptableObject.CreateInstance<NPCArchetypeConfiguration>();
             dataConfig.DefaultName = resolvedName;
             dataConfig.RigStyle = _rigType;
-            // BrainStyle uses NPCArchetypeConfiguration's own default (FixedScripted).
             dataConfig.InteractionPromptText = _promptTextString;
             dataConfig.UiVerticalOffsetHeight = _canvasHeightOffset;
 
-            // Seed fallback string for FixedScripted branch
             ScriptedResponsePacket placeholderLine = new ScriptedResponsePacket();
             placeholderLine.RequiredState = EmotionalState.Neutral;
             placeholderLine.ResponseText = "Hello traveller! What brings you to these parts?";
@@ -968,8 +930,6 @@ namespace TownsPeople.CustomEditor
             dataConfig.ScriptedDialogues = new System.Collections.Generic.List<ScriptedResponsePacket>();
             dataConfig.ScriptedDialogues.Add(placeholderLine);
 
-            // v4: Ensure the configured output folder (and any missing parent folders) exists
-            // before saving, instead of dumping the asset into Assets/ root.
             EnsureFolderExists(_outputFolderPath);
 
             string safeName = string.IsNullOrWhiteSpace(resolvedName) ? "Unnamed" : resolvedName.Replace(" ", "_");
@@ -983,7 +943,6 @@ namespace TownsPeople.CustomEditor
             serializedProximity.ApplyModifiedProperties();
 
             Selection.activeGameObject = rootInstance;
-            // Ping the generated profile asset in the Project window so it's easy to find.
             EditorGUIUtility.PingObject(dataConfig);
 
             string nameNote = resolvedName != _npcName
@@ -991,6 +950,40 @@ namespace TownsPeople.CustomEditor
                 : "";
 
             EditorUtility.DisplayDialog("Success!", $"Compiled an Asset-Ready {_selectedVariant.ToString()} prefab.\n\nProfile saved to:\n{uniquePath}{nameNote}", "Perfect");
+        }
+
+        /// <summary>
+        /// v29: Recursively searches every layer of the given controller for a state whose
+        /// name matches (case-insensitive) and whose Motion is a BlendTree. Used to
+        /// auto-populate LocomotionAgent's per-pose playback rates at generation time, without
+        /// guessing at an unrelated tree if the naming convention isn't followed.
+        /// </summary>
+        private static BlendTree FindNamedBlendTree(AnimatorController controller, string stateName)
+        {
+            foreach (AnimatorControllerLayer layer in controller.layers)
+            {
+                BlendTree found = FindNamedBlendTreeRecursive(layer.stateMachine, stateName);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private static BlendTree FindNamedBlendTreeRecursive(AnimatorStateMachine stateMachine, string stateName)
+        {
+            foreach (ChildAnimatorState childState in stateMachine.states)
+            {
+                if (string.Equals(childState.state.name, stateName, StringComparison.OrdinalIgnoreCase)
+                    && childState.state.motion is BlendTree blendTree)
+                {
+                    return blendTree;
+                }
+            }
+            foreach (ChildAnimatorStateMachine childMachine in stateMachine.stateMachines)
+            {
+                BlendTree found = FindNamedBlendTreeRecursive(childMachine.stateMachine, stateName);
+                if (found != null) return found;
+            }
+            return null;
         }
     }
 }

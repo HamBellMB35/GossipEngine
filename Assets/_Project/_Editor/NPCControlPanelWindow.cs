@@ -14,25 +14,15 @@ namespace TownsPeople.CustomEditor
     /// separate Inspector block on an NPC. Select any NPC (root or a child of one) and this
     /// window auto-targets it, grouping its components into CORE (Identity & State,
     /// Perception, Presentation, Infrastructure) and ADD-ONS (Optional Behavior Overrides,
-    /// Role-Specific Add-ons, Locomotion) sections — click a category button to see only that
-    /// section's components. Every field already available in the normal Inspector remains
-    /// available here (each card renders via Editor.CreateEditor(component).OnInspectorGUI(),
-    /// the same mechanism Unity's own Inspector uses) — this changes how it's organized, never
-    /// what's exposed, and automatically picks up any future fields added to these components
-    /// without needing this window updated. Category MEMBERSHIP (which component types belong
-    /// to which button) is an explicit list in BuildCategoryMaps() — not auto-discovered — so a
-    /// newly added component type needs a one-line addition there to appear in the panel at
-    /// all.
+    /// Role-Specific Add-ons, Locomotion) sections.
     ///
-    /// Note: LocomotionRoute itself is never rendered inline here (it lives on its own
-    /// standalone GameObject and can be shared by multiple NPCs, so showing its full editor
-    /// inside one NPC's panel would be misleading) — but the Locomotion category includes a
-    /// "Show Locomotion Route" quick-access button that selects/pings/frames the currently
-    /// assigned route in the Scene view, via DrawLocomotionRouteButton().
-    ///
-    /// Visual style (rounded cards/buttons, editable colors) comes from
-    /// TownsPeopleEditorTheme — kept separate so the same look can be shared across other
-    /// wizards later for one consistent tool identity.
+    /// FIX: every Locomotion-specific type reference (LocomotionAgent, LocomotionRoute,
+    /// LocomotionRootMotionRelay) now goes through Type.GetType() reflection rather than a
+    /// direct compile-time reference — Locomotion is a separately-sold, optional add-on, and
+    /// this file (part of the CORE asset) must compile and function correctly whether or not a
+    /// given buyer has installed it, same as the existing Vendor/Quest pattern in
+    /// BuildCategoryMaps(). Previously this file would have failed to compile entirely for any
+    /// buyer without the Locomotion add-on present.
     /// </summary>
     public class NPCControlPanelWindow : EditorWindow
     {
@@ -71,15 +61,6 @@ namespace TownsPeople.CustomEditor
             EditorApplication.playModeStateChanged -= HandlePlayModeStateChanged;
         }
 
-        /// <summary>
-        /// FIX: cached Editors wrap component instances that get destroyed the moment Play
-        /// Mode exits (and fresh instances are created on entering it) — without clearing the
-        /// cache here, the panel kept trying to render Editors pointed at destroyed objects,
-        /// showing Unity's "The associated script cannot be loaded" fallback for every
-        /// affected component (in practice, this hit LocomotionAgent/
-        /// LocomotionRootMotionRelay since those are the ones actively used/modified at
-        /// runtime, but the bug applied to any component this panel had rendered).
-        /// </summary>
         private void HandlePlayModeStateChanged(PlayModeStateChange state)
         {
             ClearEditorCache();
@@ -93,10 +74,9 @@ namespace TownsPeople.CustomEditor
         }
 
         /// <summary>
-        /// Builds the Core/Add-on category → component type map. Role-Specific Add-ons are
-        /// resolved via reflection since VendorComponentAddon/QuestComponentAddon are optional
-        /// packs that may not exist in every project — missing ones are simply skipped, same
-        /// pattern used by NPCCreatorWizardWindow.
+        /// Builds the Core/Add-on category → component type map. Role-Specific Add-ons and
+        /// Locomotion are both resolved via reflection since they're optional packs that may
+        /// not exist in every project — missing ones are simply skipped.
         /// </summary>
         private void BuildCategoryMaps()
         {
@@ -114,21 +94,25 @@ namespace TownsPeople.CustomEditor
             if (vendorType != null) roleSpecificTypes.Add(vendorType);
             if (questType != null) roleSpecificTypes.Add(questType);
 
+            // FIX: previously referenced typeof(LocomotionAgent)/typeof(LocomotionRootMotionRelay)
+            // directly — a hard compile-time dependency that would break this ENTIRE file (and
+            // therefore the whole NPC Control Panel) for any buyer who owns the base asset but
+            // NOT the separately-sold Locomotion add-on. Converted to the same reflection
+            // pattern already used for Vendor/Quest above.
+            List<Type> locomotionTypes = new List<Type>();
+            Type locomotionAgentType = Type.GetType("TownsPeople.GamePlay.LocomotionAgent");
+            Type locomotionRelayType = Type.GetType("TownsPeople.GamePlay.LocomotionRootMotionRelay");
+            if (locomotionAgentType != null) locomotionTypes.Add(locomotionAgentType);
+            if (locomotionRelayType != null) locomotionTypes.Add(locomotionRelayType);
+
             _addonCategories = new (string, Type[])[]
             {
                 ("Optional Behavior Overrides", new[] { typeof(NPCWitnessReaction), typeof(NPCRumorIndicator) }),
                 ("Role-Specific Add-ons", roleSpecificTypes.ToArray()),
-                ("Locomotion", new[] { typeof(LocomotionAgent), typeof(LocomotionRootMotionRelay) }),
+                ("Locomotion", locomotionTypes.ToArray()),
             };
         }
 
-        /// <summary>
-        /// If the current Selection is (or is a child of) an NPC — detected by the presence of
-        /// NPCGossipMemory or NPCGreetingResponder anywhere in its hierarchy — auto-targets
-        /// this window at that NPC's root. Leaves the target unchanged if the selection doesn't
-        /// look like an NPC, so selecting something unrelated (e.g. a LocomotionRoute object
-        /// via the "Show Locomotion Route" button below) doesn't lose your place.
-        /// </summary>
         private void AutoDetectTargetFromSelection()
         {
             GameObject selected = Selection.activeGameObject;
@@ -237,7 +221,6 @@ namespace TownsPeople.CustomEditor
             EditorGUILayout.EndHorizontal();
         }
 
-        /// <summary>A single rounded, theme-colored toggle button. Returns true the frame it's clicked.</summary>
         private bool DrawToggleButton(string label, bool selected)
         {
             GUIStyle style = TownsPeopleEditorTheme.CreateCategoryButtonStyle(selected);
@@ -279,39 +262,49 @@ namespace TownsPeople.CustomEditor
         }
 
         /// <summary>
-        /// Locomotion-only extra: a quick-access button to jump to this NPC's assigned
-        /// LocomotionRoute, which lives on its own separate GameObject and is therefore never
-        /// shown inline as a normal component card here (a route can be shared by many NPCs,
-        /// so rendering its full editor inside one NPC's panel would be misleading). Clicking
-        /// selects, pings, and frames the Scene view on that route object.
+        /// FIX: rewritten to use reflection (Type.GetType + Component/SerializedObject) instead
+        /// of the direct LocomotionAgent/LocomotionRoute type references this method previously
+        /// had — same compile-safety reasoning as BuildCategoryMaps() above. If the Locomotion
+        /// add-on isn't installed, this silently does nothing rather than failing to compile.
         /// </summary>
         private void DrawLocomotionRouteButton()
         {
-            LocomotionAgent agent = _targetNpc.GetComponentInChildren<LocomotionAgent>();
+            Type locomotionAgentType = Type.GetType("TownsPeople.GamePlay.LocomotionAgent");
+            if (locomotionAgentType == null) return;
+
+            Component agentComponent = _targetNpc.GetComponentInChildren(locomotionAgentType);
 
             GUIStyle cardStyle = TownsPeopleEditorTheme.CreateCardStyle(TownsPeopleEditorTheme.Panel);
             EditorGUILayout.BeginVertical(cardStyle);
 
-            if (agent == null)
+            if (agentComponent == null)
             {
                 EditorGUILayout.HelpBox("This NPC has no LocomotionAgent yet.", MessageType.None);
             }
-            else if (agent.AssignedRoute == null)
-            {
-                EditorGUILayout.HelpBox("No Locomotion Route assigned to this NPC yet — assign one on LocomotionAgent below.", MessageType.None);
-            }
             else
             {
-                LocomotionRoute route = agent.AssignedRoute;
-                EditorGUILayout.LabelField("Assigned Route", EditorStyles.boldLabel);
-                EditorGUILayout.LabelField(route.gameObject.name, EditorStyles.miniLabel);
-                EditorGUILayout.Space(4);
+                SerializedObject serializedAgent = new SerializedObject(agentComponent);
+                SerializedProperty routeProp = serializedAgent.FindProperty("_assignedRoute");
+                UnityEngine.Object routeObj = routeProp != null ? routeProp.objectReferenceValue : null;
+                Component routeComponent = routeObj as Component;
+                GameObject routeGameObject = routeComponent != null ? routeComponent.gameObject : null;
 
-                if (GUILayout.Button("Show Locomotion Route", GUILayout.Height(28)))
+                if (routeGameObject == null)
                 {
-                    Selection.activeGameObject = route.gameObject;
-                    EditorGUIUtility.PingObject(route.gameObject);
-                    SceneView.lastActiveSceneView?.FrameSelected();
+                    EditorGUILayout.HelpBox("No Locomotion Route assigned to this NPC yet — assign one on LocomotionAgent below.", MessageType.None);
+                }
+                else
+                {
+                    EditorGUILayout.LabelField("Assigned Route", EditorStyles.boldLabel);
+                    EditorGUILayout.LabelField(routeGameObject.name, EditorStyles.miniLabel);
+                    EditorGUILayout.Space(4);
+
+                    if (GUILayout.Button("Show Locomotion Route", GUILayout.Height(28)))
+                    {
+                        Selection.activeGameObject = routeGameObject;
+                        EditorGUIUtility.PingObject(routeGameObject);
+                        SceneView.lastActiveSceneView?.FrameSelected();
+                    }
                 }
             }
 
