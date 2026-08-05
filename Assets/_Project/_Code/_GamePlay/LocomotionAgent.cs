@@ -79,6 +79,17 @@ namespace TownsPeople.GamePlay
     // and every pose keeps its own independent value — nothing collapsed, nothing approximated.
     // LocomotionAgentEditor's sync no longer deduplicates by Speed — every Blend Tree child gets
     // its own row again.
+    //
+    // v7: Corner anticipation, for curved turns instead of sharp pivots. LocomotionAgent is
+    // leg-based — it never called SetDestination() for the NEXT waypoint until fully arrived at
+    // the current one, so NavMeshAgent's path was always a strict polyline: walk dead straight
+    // into a corner, stop-ish, pivot onto the next straight segment. New OnApproachingDestination
+    // event fires once, BEFORE full arrival, for a pass-through leg only (never a POI/stop leg —
+    // those still fully stop as intended) — the driver (LocomotionTester) redirects to the next
+    // waypoint right then, while still approaching the current one. Redirecting a NavMeshAgent
+    // mid-approach makes it recompute a smooth path toward a point beyond the corner instead of
+    // into it, which is what actually curves the trajectory — no change to the underlying
+    // steering/pathfinding itself, just WHEN the next destination is issued.
     [RequireComponent(typeof(NavMeshAgent))]
     public class LocomotionAgent : MonoBehaviour, INpcMovementController
     {
@@ -143,6 +154,10 @@ namespace TownsPeople.GamePlay
 
         [Tooltip("v3.2: How far (world units) before the destination this NPC starts smoothly decelerating. Larger = a longer, gentler slowdown; smaller = a shorter, more sudden one.")]
         [SerializeField] private float _arrivalDecelerationDistance = 1.5f;
+
+        [Header("Corner Anticipation")]
+        [Tooltip("v7: How far (world units) before a PLAIN (pass-through) waypoint this NPC signals it's ready for the next leg (OnApproachingDestination), instead of waiting for exact arrival. Lets the driver redirect toward the next waypoint early, so NavMeshAgent naturally curves through the corner instead of pivoting sharply at a dead stop. Never applies to a POI/stop waypoint (LingerDuration > 0) — those still fully arrive and stop as intended. 0 disables this entirely, reverting to the original sharp-corner behavior.")]
+        [SerializeField] private float _cornerAnticipationDistance = 2f;
 
         [Header("Avoidance")]
         [Tooltip("Lower values yield right-of-way to NPCs with higher priority (lower number) when paths conflict — Unity's built-in NavMesh local avoidance handles the actual steering/waiting/veering. Range 0-99.")]
@@ -217,8 +232,15 @@ namespace TownsPeople.GamePlay
         // BeginLeg(), so a pending linger can never fire OnArrivedAtDestination after this NPC
         // has already been redirected elsewhere.
         private Coroutine _lingerCoroutine;
+        // v7: Guards OnApproachingDestination so it fires exactly ONCE per pass-through leg —
+        // reset in BeginLeg() for the new leg.
+        private bool _hasFiredApproachThisLeg;
 
         public event Action OnArrivedAtDestination;
+        // v7: Fires ONCE, before full arrival, ONLY for a pass-through (non-stop) leg — see
+        // _cornerAnticipationDistance below for why. A POI/stop leg never fires this; it only
+        // ever fires OnArrivedAtDestination, once it has actually fully stopped.
+        public event Action OnApproachingDestination;
 
         public bool IsMoving => _isMoving;
         public bool IsPaused => _agent.isStopped;
@@ -312,6 +334,8 @@ namespace TownsPeople.GamePlay
             // and by the arrival branch to decide whether/how long to linger.
             _currentLegLingerDuration = lingerDuration;
             _currentLegShouldStop = lingerDuration > 0f;
+            // v7: Reset for the new leg — OnApproachingDestination can fire once more.
+            _hasFiredApproachThisLeg = false;
 
             _agent.SetDestination(destination);
             _isMoving = true;
@@ -403,6 +427,20 @@ namespace TownsPeople.GamePlay
             // (multiplier stays 1), exactly like before v3.2 ever existed.
             float arrivalMultiplier = _currentLegShouldStop ? ComputeArrivalSpeedMultiplier(remainingDistance) : 1f;
             SetTargetSpeed(_currentLegTargetSpeed * turnMultiplier * arrivalMultiplier);
+
+            // v7: Fires ONCE, before full arrival, ONLY for a pass-through leg — lets the driver
+            // redirect toward the NEXT waypoint early so this NPC curves through the corner
+            // instead of walking dead straight into it and pivoting. A POI/stop leg is
+            // deliberately excluded (guarded by !_currentLegShouldStop) — those should still
+            // fully arrive and stop, not curve past.
+            if (!_currentLegShouldStop && !_hasFiredApproachThisLeg
+                && _cornerAnticipationDistance > 0f
+                && remainingDistance <= _cornerAnticipationDistance
+                && remainingDistance > _agent.stoppingDistance)
+            {
+                _hasFiredApproachThisLeg = true;
+                OnApproachingDestination?.Invoke();
+            }
 
             if (remainingDistance <= _agent.stoppingDistance)
             {
@@ -607,28 +645,62 @@ namespace TownsPeople.GamePlay
         /// neighboring pose. Replaces the old Speed-axis-only bracket interpolation, which could
         /// never correctly handle a 2D tree's Turn-axis variants.
         /// </summary>
+        // TEMP DIAGNOSTIC (Answer #38) — tracks last logged state so logging only fires on
+        // actual change, not every frame. Remove this field and every log line below it once
+        // the actual cause of "no effect" is confirmed and fixed.
+        private string _lastLoggedDominantClip = "<<never logged>>";
+        private float _lastLoggedMultiplier = float.NaN;
+
         private float ComputeLiveClipMultiplier()
         {
-            if (_posePlaybackRates == null || _posePlaybackRates.Count == 0 || _animator == null) return 1f;
+            if (_posePlaybackRates == null || _posePlaybackRates.Count == 0)
+            {
+                LogDiagnosticOnce("<<no synced entries — PosePlaybackRates is empty>>", 1f);
+                return 1f;
+            }
+            if (_animator == null) return 1f;
 
             AnimatorClipInfo[] clipInfos = _animator.GetCurrentAnimatorClipInfo(_locomotionLayerIndex);
-            if (clipInfos == null || clipInfos.Length == 0) return 1f;
+            if (clipInfos == null || clipInfos.Length == 0)
+            {
+                LogDiagnosticOnce($"<<no clip info on layer {_locomotionLayerIndex} — check Locomotion Layer Index matches where your Blend Tree actually lives>>", 1f);
+                return 1f;
+            }
 
             AnimatorClipInfo dominant = clipInfos[0];
             for (int i = 1; i < clipInfos.Length; i++)
             {
                 if (clipInfos[i].weight > dominant.weight) dominant = clipInfos[i];
             }
-            if (dominant.clip == null) return 1f;
+            if (dominant.clip == null)
+            {
+                LogDiagnosticOnce("<<dominant clip is null>>", 1f);
+                return 1f;
+            }
 
             foreach (PosePlaybackRate rate in _posePlaybackRates)
             {
-                if (rate.MotionName == dominant.clip.name) return rate.Multiplier;
+                if (rate.MotionName == dominant.clip.name)
+                {
+                    LogDiagnosticOnce(dominant.clip.name, rate.Multiplier);
+                    return rate.Multiplier;
+                }
             }
 
             // Dominant clip has no synced entry (e.g. sync hasn't been re-run since a new pose
             // was added to the tree) — default to no change rather than guessing.
+            LogDiagnosticOnce($"{dominant.clip.name} <<NO MATCHING SYNCED ENTRY — click Sync Poses again>>", 1f);
             return 1f;
+        }
+
+        /// <summary>TEMP DIAGNOSTIC (Answer #38) — remove alongside the fields/calls above once resolved.</summary>
+        private void LogDiagnosticOnce(string clipDescription, float multiplier)
+        {
+            if (clipDescription == _lastLoggedDominantClip && Mathf.Approximately(multiplier, _lastLoggedMultiplier)) return;
+
+            _lastLoggedDominantClip = clipDescription;
+            _lastLoggedMultiplier = multiplier;
+            Debug.Log($"<color=magenta>[SpeedMultiplierDebug]</color> '{gameObject.name}' dominant: {clipDescription} -> Multiplier: {multiplier}");
         }
 
 #if UNITY_EDITOR

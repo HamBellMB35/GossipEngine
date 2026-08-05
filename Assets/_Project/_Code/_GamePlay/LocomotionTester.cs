@@ -31,11 +31,19 @@ namespace TownsPeople.GamePlay
         {
             _agent = GetComponent<LocomotionAgent>();
             _agent.OnArrivedAtDestination += HandleArrived;
+            // v2: Corner anticipation � fires early for a plain (pass-through) waypoint,
+            // before full arrival. Routed through the same AdvanceToNextWaypoint() as a real
+            // arrival � for a pass-through leg with anticipation enabled, only THIS one ends
+            // up firing (redirecting the destination before the old leg's own arrival check can
+            // trigger), so there's no double-advance to guard against.
+            _agent.OnApproachingDestination += HandleApproaching;
         }
 
         private void OnDestroy()
         {
-            if (_agent != null) _agent.OnArrivedAtDestination -= HandleArrived;
+            if (_agent == null) return;
+            _agent.OnArrivedAtDestination -= HandleArrived;
+            _agent.OnApproachingDestination -= HandleApproaching;
         }
 
         private void Start()
@@ -82,7 +90,13 @@ namespace TownsPeople.GamePlay
             Debug.Log($"<color=cyan>[LocomotionTester]</color> '{gameObject.name}' heading to waypoint {_currentWaypointIndex} ({waypoint.ArrivalSpeedTier}).");
         }
 
-        private void HandleArrived()
+        // v2: Both a real arrival AND a corner-anticipation "approaching" signal advance to
+        // the next waypoint the same way � the only difference is WHEN LocomotionAgent fires
+        // one versus the other (see its own v7 header comment).
+        private void HandleArrived() => AdvanceToNextWaypoint();
+        private void HandleApproaching() => AdvanceToNextWaypoint();
+
+        private void AdvanceToNextWaypoint()
         {
             if (!_isRunning) return;
 
