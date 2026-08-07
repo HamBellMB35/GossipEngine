@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+ï»¿using System.Collections.Generic;
 using UnityEngine;
 using VContainer;
 using TownsPeople.Services;
@@ -10,7 +10,7 @@ namespace TownsPeople.GamePlay
     /// <summary>
     /// Represents the WITNESS step of the gossip pipeline. Call BroadcastDeed() whenever the
     /// player performs something witnessable (a good or bad deed). This is the only place
-    /// proximity matters in the whole propagation pipeline — everything after this point
+    /// proximity matters in the whole propagation pipeline ï¿½ everything after this point
     /// (tick-based NPC-to-NPC spread) is distance-agnostic by design.
     /// </summary>
     // v2: Updated to use RumorTemplate's Alignment-driven signed impacts (SignedGeneralReputationImpact,
@@ -19,11 +19,11 @@ namespace TownsPeople.GamePlay
     // derived at ReputationService.FactionImpactRateMultiplier of the general impact, rather
     // than being a second number the designer has to keep in sync by hand.
     // v3: Added a global WitnessReactionMode + player-side animation trigger. REVERTED in v4.
-    // v4: v3's approach was wrong — witness reaction is a per-NPC choice, not one global
+    // v4: v3's approach was wrong ï¿½ witness reaction is a per-NPC choice, not one global
     // player-side setting. Reverted those fields entirely. Each witnessing NPC now decides for
     // itself via an OPTIONAL NPCWitnessReaction component: if present and set to PlayAnimation,
     // that NPC plays its own configured reaction animation/audio instead of presenting the
-    // rumor normally. If absent, or left at PresentRumor, behavior is identical to v2 — this
+    // rumor normally. If absent, or left at PresentRumor, behavior is identical to v2 ï¿½ this
     // component is purely additive. Learning the rumor and the personal opinion adjustment
     // remain unconditional either way (game state, not presentation).
     public class PlayerDeedBroadcaster : MonoBehaviour
@@ -69,7 +69,7 @@ namespace TownsPeople.GamePlay
         /// <summary>
         /// Applies the deed's general/faction reputation impact exactly once, regardless of
         /// how many NPCs witnessed it. Faction impact is always General impact scaled by
-        /// ReputationService.FactionImpactRateMultiplier — moving deliberately slower.
+        /// ReputationService.FactionImpactRateMultiplier ï¿½ moving deliberately slower.
         /// </summary>
         private void ApplyWorldReputationImpact(RumorTemplate deedRumor)
         {
@@ -91,7 +91,7 @@ namespace TownsPeople.GamePlay
         /// NPCWitnessReaction component: if present and set to PlayAnimation, that NPC plays
         /// its own configured reaction instead of the normal rumor presentation. If the
         /// component is absent, or left at PresentRumor, behavior is identical to before this
-        /// component existed — each NPC decides independently, so a mixed group of witnesses
+        /// component existed ï¿½ each NPC decides independently, so a mixed group of witnesses
         /// can react in different ways to the same deed.
         /// </summary>
         private void NotifyWitness(NPCGossipMemory memory, RumorTemplate deedRumor)
@@ -102,6 +102,26 @@ namespace TownsPeople.GamePlay
             if (opinion != null)
             {
                 opinion.ApplyWitnessModifier(deedRumor.SignedWitnessOpinionImpact);
+            }
+
+            // v5: A higher-priority behavior (currently only Flocking/Fleeing) is active on
+            // this NPC ï¿½ everything above already ran; presentation of any kind (either
+            // branch below) is skipped entirely.
+            IPriorityBehaviorState priorityBehavior = memory.GetComponent<IPriorityBehaviorState>();
+            // v6: Also checks INpcMovementController.IsRunning â€” a plain running NPC (no
+            // flocking involved at all, just a Locomotion route at Run speed) was never covered
+            // by the v5 flocking-only check above, so it could still have its movement paused
+            // for an ambient reaction while running. Now consistent with NPCProximityGossip's
+            // own "a running NPC is never interactable" rule â€” running always skips
+            // presentation, flocking or not; learning and the opinion adjustment above are
+            // still completely unaffected either way.
+            INpcMovementController movementController = memory.GetComponent<INpcMovementController>();
+            bool isUninterruptible = (movementController != null && movementController.IsRunning)
+                || (priorityBehavior != null && priorityBehavior.IsActive);
+
+            if (isUninterruptible)
+            {
+                return;
             }
 
             NPCWitnessReaction reaction = memory.GetComponent<NPCWitnessReaction>();

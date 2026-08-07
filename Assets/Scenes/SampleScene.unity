@@ -522,7 +522,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &126123467
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -830,6 +830,7 @@ MonoBehaviour:
   interactionPromptFader: {fileID: 1400849657}
   interactionCooldownDuration: 10
   speechBubbleHideDuration: 13
+  _stoppableWhenRunning: 1
   _showRangeGizmo: 1
   _rangeGizmoColor: {r: 0, g: 0.6, b: 1, a: 0.5}
 --- !u!114 &126123478
@@ -2915,6 +2916,7 @@ MonoBehaviour:
   interactionPromptFader: {fileID: 597459899}
   interactionCooldownDuration: 10
   speechBubbleHideDuration: 13
+  _stoppableWhenRunning: 1
   _showRangeGizmo: 1
   _rangeGizmoColor: {r: 0, g: 0.6, b: 1, a: 0.5}
 --- !u!114 &419605745
@@ -5754,6 +5756,7 @@ MonoBehaviour:
   interactionPromptFader: {fileID: 679017840}
   interactionCooldownDuration: 10
   speechBubbleHideDuration: 13
+  _stoppableWhenRunning: 1
   _showRangeGizmo: 1
   _rangeGizmoColor: {r: 0, g: 0.6, b: 1, a: 0.5}
 --- !u!114 &999379790
@@ -6599,6 +6602,7 @@ MonoBehaviour:
   interactionPromptFader: {fileID: 2022594566}
   interactionCooldownDuration: 10
   speechBubbleHideDuration: 13
+  _stoppableWhenRunning: 1
   _showRangeGizmo: 1
   _rangeGizmoColor: {r: 0, g: 0.6, b: 1, a: 0.5}
 --- !u!114 &1075059692
@@ -8066,6 +8070,7 @@ MonoBehaviour:
   interactionPromptFader: {fileID: 697956720}
   interactionCooldownDuration: 10
   speechBubbleHideDuration: 13
+  _stoppableWhenRunning: 0
   _showRangeGizmo: 1
   _rangeGizmoColor: {r: 0, g: 0.6, b: 1, a: 0.5}
 --- !u!114 &1394067345
@@ -12052,6 +12057,7 @@ MonoBehaviour:
   interactionPromptFader: {fileID: 466381439}
   interactionCooldownDuration: 10
   speechBubbleHideDuration: 13
+  _stoppableWhenRunning: 1
   _showRangeGizmo: 1
   _rangeGizmoColor: {r: 0, g: 0.6, b: 1, a: 0.5}
 --- !u!114 &2030668486

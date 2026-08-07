@@ -39,6 +39,10 @@ namespace TownsPeople.GamePlay
         [SerializeField] private float interactionCooldownDuration = 10f;
         [SerializeField] private float speechBubbleHideDuration = 13f;
 
+        [Header("Manual Catch")]
+        [Tooltip("v13: Renamed from _allowManualCatchInteraction for a clearer Inspector label. If enabled, the player can still force an [E] interaction on a running or flocking/fleeing NPC by physically catching up and pressing [E] directly — no [E] prompt shows automatically in that state (matches the existing prompt-hiding behavior), but a direct press still works. If disabled, reverts to the original strict rule: a running/flocking NPC is never interactable no matter what, only via AutoProximity/Update's own gates.")]
+        [SerializeField] private bool _stoppableWhenRunning = true;
+
         [Header("Editor Visualization")]
         [Tooltip("If enabled, draws a wire sphere in the Scene view showing this NPC's proximity/interaction range at all times (not just when selected).")]
         [SerializeField] private bool _showRangeGizmo = true;
@@ -60,6 +64,11 @@ namespace TownsPeople.GamePlay
         // (i.e. no Locomotion add-on, or Locomotion not attached to this specific NPC). Every
         // usage below is null-conditional (?.) so behavior is unchanged for those NPCs.
         private INpcMovementController _movementController;
+        // v11: OPTIONAL — implemented only by the Locomotion add-on's NPCFlockingBehavior.
+        // While IsActive is true, this NPC is treated the same as a running one: not
+        // interactable at all. Pausing movement for an interaction (ExecuteInteractionImmediate)
+        // would directly fight an active flee, not just be a presentation nicety.
+        private IPriorityBehaviorState _priorityBehavior;
 
         private void Awake()
         {
@@ -74,6 +83,19 @@ namespace TownsPeople.GamePlay
             // is defined in Core. Resolves LocomotionAgent automatically if present, without
             // this script ever referencing that (or any future movement add-on's) concrete type.
             _movementController = GetComponent<INpcMovementController>();
+            _priorityBehavior = GetComponent<IPriorityBehaviorState>();
+        }
+
+        /// <summary>
+        /// v11: True while this NPC should be treated as fully non-interactable — running, OR a
+        /// higher-priority behavior (currently only Flocking/Fleeing) is active. Single choke
+        /// point for the three places that previously checked IsRunning alone.
+        /// </summary>
+        private bool IsUninterruptible()
+        {
+            if (_movementController != null && _movementController.IsRunning) return true;
+            if (_priorityBehavior != null && _priorityBehavior.IsActive) return true;
+            return false;
         }
 
         private void Start()
@@ -87,9 +109,10 @@ namespace TownsPeople.GamePlay
 
             _isPlayerInZone = true;
 
-            // v7: A running NPC is not interactable at all — no Auto-Proximity trigger, no [E]
-            // prompt. Bail out entirely before either check below runs.
-            if (_movementController != null && _movementController.IsRunning)
+            // v11: A running OR flocking/fleeing NPC is not interactable at all — no
+            // Auto-Proximity trigger, no [E] prompt. Bail out entirely before either check below
+            // runs.
+            if (IsUninterruptible())
             {
                 return;
             }
@@ -146,21 +169,24 @@ namespace TownsPeople.GamePlay
         // Locomotion NPC transitioning into/out of a Run leg WHILE the player is already
         // standing in its trigger zone (OnTriggerEnter alone can't catch this, since it only
         // fires once, on entry).
-        private bool _wasRunningLastFrame;
+        // v11: Renamed from _wasRunningLastFrame — now tracks IsUninterruptible() as a whole
+        // (running OR flocking), not just IsRunning.
+        private bool _wasUninterruptibleLastFrame;
 
         private void Update()
         {
             if (Keyboard.current == null) return;
 
-            // v7: Reactively show/hide the prompt as this NPC starts or stops running, for as
-            // long as the player remains in the zone. Skipped entirely for NPCs with no
-            // movement controller — zero extra cost for the common non-Locomotion case.
-            if (_movementController != null && _isPlayerInZone && !_isOnCooldown)
+            // v11: Reactively show/hide the prompt as this NPC starts or stops being
+            // uninterruptible (running, or now also flocking/fleeing), for as long as the
+            // player remains in the zone. Skipped entirely for NPCs with neither a movement
+            // controller nor a priority behavior — zero extra cost for the common case.
+            if ((_movementController != null || _priorityBehavior != null) && _isPlayerInZone && !_isOnCooldown)
             {
-                bool isRunningNow = _movementController.IsRunning;
-                if (isRunningNow != _wasRunningLastFrame)
+                bool isUninterruptibleNow = IsUninterruptible();
+                if (isUninterruptibleNow != _wasUninterruptibleLastFrame)
                 {
-                    if (isRunningNow)
+                    if (isUninterruptibleNow)
                     {
                         interactionPromptFader?.Hide();
                     }
@@ -168,13 +194,15 @@ namespace TownsPeople.GamePlay
                     {
                         interactionPromptFader?.Show();
                     }
-                    _wasRunningLastFrame = isRunningNow;
+                    _wasUninterruptibleLastFrame = isUninterruptibleNow;
                 }
             }
 
-            // v7: Extra safety net alongside the OnTriggerEnter/Update guard above — even if the
-            // prompt's fade hasn't fully caught up yet, an actual [E] press while running is
-            // ignored outright inside ExecuteInteraction() itself.
+            // v12: This always attempts the press regardless of running/flocking state — by
+            // default (_stoppableWhenRunning = true) ExecuteInteraction() itself now
+            // allows a direct [E] press to "catch" a running/flocking NPC even without a prompt
+            // ever having shown. Set _stoppableWhenRunning to false to restore the old
+            // strict behavior (E silently ignored in that state).
             if (_isPlayerInZone && !_isOnCooldown && Keyboard.current.eKey.wasPressedThisFrame)
             {
                 ExecuteInteraction();
@@ -185,9 +213,12 @@ namespace TownsPeople.GamePlay
         {
             if (_isOnCooldown || _isDeferringInteraction) return;
 
-            // v7: Running NPCs are never interactable, full stop — must never be yanked out of
-            // a dash by the player pressing [E].
-            if (_movementController != null && _movementController.IsRunning) return;
+            // v12: A direct [E] press ("catching" the NPC) is now allowed to override the
+            // running/flocking gate, if _stoppableWhenRunning is enabled (the default).
+            // The [E] prompt still never shows automatically in this state (Update()'s
+            // prompt-visibility watcher, and OnTriggerEnter's AutoProximity/prompt skip, are
+            // both untouched) — this only affects whether a direct keypress works.
+            if (!_stoppableWhenRunning && IsUninterruptible()) return;
 
             // v10: If this NPC is currently mid-audio (e.g. reacting to a just-witnessed
             // PlayerDeedBroadcaster event), defer the interaction instead of immediately

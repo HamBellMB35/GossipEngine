@@ -111,7 +111,9 @@ public class GameLifetimeScope : LifetimeScope
             System.Type type = System.Type.GetType(fullyQualifiedTypeName);
             if (type == null) return;
 
-            Object[] instances = Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None);
+            // v10: Uses the overload WITHOUT FindObjectsSortMode — that parameter is deprecated;
+            // this reflection-based injection helper doesn't care about ordering anyway.
+            Object[] instances = Object.FindObjectsByType(type, FindObjectsInactive.Include);
             foreach (Object instance in instances)
             {
                 _resolver.Inject(instance);

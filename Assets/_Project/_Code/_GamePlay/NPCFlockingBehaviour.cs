@@ -37,7 +37,7 @@ namespace TownsPeople.GamePlay
     // pairing each trigger with ITS OWN return condition (FlockTriggerPair) — only the pair that
     // actually caused the current flocking episode is checked for when to end it.
     [RequireComponent(typeof(LocomotionAgent))]
-    public class NPCFlockingBehavior : MonoBehaviour
+    public class NPCFlockingBehavior : MonoBehaviour, IPriorityBehaviorState
     {
         [Serializable]
         public class FlockTriggerPair
@@ -96,6 +96,9 @@ namespace TownsPeople.GamePlay
 
         /// <summary>True while this NPC is currently flocking/fleeing.</summary>
         public bool IsFlocking => _isFlocking;
+
+        /// <summary>IPriorityBehaviorState — reactive systems (rumor presentation, witness reactions) check this to know they should skip presentation while true.</summary>
+        public bool IsActive => _isFlocking;
 
         /// <summary>Fires the instant a trigger condition starts flocking.</summary>
         public event Action OnFlockingStarted;

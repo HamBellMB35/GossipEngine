@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -11,15 +11,15 @@ namespace TownsPeople.GamePlay
 {
     // v8: PresentRumor now chooses WHAT to say from three tiers, in order:
     // 1. The rumor's own SpecificResponses (rotated, shared usage count game-wide via
-    //    GossipManager) — fresh, unique reactions to this specific piece of gossip.
+    //    GossipManager) ï¿½ fresh, unique reactions to this specific piece of gossip.
     // 2. Once those are exhausted, the general Positive/Negative pool (GeneralRumorResponseLibrary),
-    //    chosen by the PLAYER'S CURRENT REPUTATION as seen by this NPC — not by the rumor's own
+    //    chosen by the PLAYER'S CURRENT REPUTATION as seen by this NPC ï¿½ not by the rumor's own
     //    Alignment. This is what makes NPCs eventually just react to "how do I feel about the
     //    player right now" instead of endlessly repeating specific gossip content.
     // 3. The rumor's own RumorDisplayText/VoiceLineAudio, as an always-available fallback if
     //    neither of the above produced anything (e.g. minimal setup with no response arrays).
     //
-    // DialogueOptionSettings and CustomDialogueOption moved to DialogueOptionData.cs — same
+    // DialogueOptionSettings and CustomDialogueOption moved to DialogueOptionData.cs ï¿½ same
     // namespace, so nothing else in the project needed to change to see them.
     public class NPCGossipMemory : MonoBehaviour
     {
@@ -35,7 +35,7 @@ namespace TownsPeople.GamePlay
         [SerializeField] private NPCAnimationBridge _animationBridge;
 
         [Header("Fallback Response Pool")]
-        [Tooltip("Shared library of generic Positive/Negative reactions, used once a rumor's own Specific Responses are exhausted. Safe to leave empty — the rumor's own default text/audio will be used instead.")]
+        [Tooltip("Shared library of generic Positive/Negative reactions, used once a rumor's own Specific Responses are exhausted. Safe to leave empty ï¿½ the rumor's own default text/audio will be used instead.")]
         [SerializeField] private GeneralRumorResponseLibrary _responseLibrary;
 
         [Header("Dialogue Menu Options")]
@@ -48,7 +48,7 @@ namespace TownsPeople.GamePlay
         public DialogueOptionSettings GreetOptionSettings => _greetOption;
         public DialogueOptionSettings RumorsOptionSettings => _rumorsOption;
 
-        [Tooltip("Additional, fully custom options this NPC offers beyond Greet/Ask About Rumors. Each can call any method via its own OnSelected event — add as many as you want.")]
+        [Tooltip("Additional, fully custom options this NPC offers beyond Greet/Ask About Rumors. Each can call any method via its own OnSelected event ï¿½ add as many as you want.")]
         [SerializeField] private List<CustomDialogueOption> _customOptions = new List<CustomDialogueOption>();
 
         public IReadOnlyList<CustomDialogueOption> CustomOptions => _customOptions;
@@ -56,7 +56,7 @@ namespace TownsPeople.GamePlay
         /// <summary>
         /// v24: Plays a gendered clip (matching this NPC's own Voice Gender, with cross-gender
         /// fallback) through this NPC's own AudioSource. Used by the dialogue menu when the
-        /// player selects Greet, "What do you hear", or a custom option — each of which can
+        /// player selects Greet, "What do you hear", or a custom option ï¿½ each of which can
         /// carry its own optional Male/Female audio, separate from any rumor's own audio.
         /// </summary>
         public void PlayOptionAudio(AudioClip maleClip, AudioClip femaleClip)
@@ -103,6 +103,11 @@ namespace TownsPeople.GamePlay
         private NPCReputationOpinion _reputationOpinion;
         private GossipManager _gossipManager;
         private ReputationService _reputationService;
+        // v26: OPTIONAL â€” implemented only by the Locomotion add-on's NPCFlockingBehavior.
+        // While IsActive is true, PresentRumorInternal() skips presentation entirely (see
+        // there). Resolved via plain GetComponent<T>() â€” no reflection needed, since the
+        // interface itself lives in Core.
+        private IPriorityBehaviorState _priorityBehavior;
 
         // Same no-repeat tracking as NPCGreetingResponder, applied to this NPC's own
         // general-pool fallback tier AND its standalone PlayGreeting() below.
@@ -110,13 +115,13 @@ namespace TownsPeople.GamePlay
         private int _lastNegativeIndex = -1;
 
         // v15: Which known rumor "What do you hear on the streets?" tells next. Cycles
-        // through KnownRumors in order, wrapping around — independent of TriggerMode/
+        // through KnownRumors in order, wrapping around ï¿½ independent of TriggerMode/
         // HasBeenPresented, since the player is explicitly asking, not passively triggering.
         private int _nextRumorToTellIndex = 0;
 
         // v25 FIX: Caches PeekRumorPreviewText's General-pool result per rumor, keyed alongside
-        // which alignment pool produced it. Without this, RefreshAfterAction() — called roughly
-        // once per second by UpdateGreetCooldownDisplay() while Greet is on cooldown — was
+        // which alignment pool produced it. Without this, RefreshAfterAction() ï¿½ called roughly
+        // once per second by UpdateGreetCooldownDisplay() while Greet is on cooldown ï¿½ was
         // re-rolling a fresh random General-pool response on every single rebuild, which read
         // as the preview text flickering back and forth (especially visible with a small
         // library, e.g. 2 entries). The cache is only consulted/updated for the General-pool
@@ -139,6 +144,7 @@ namespace TownsPeople.GamePlay
             if (_audioSource == null) _audioSource = GetComponent<AudioSource>();
             if (_animationBridge == null) _animationBridge = GetComponent<NPCAnimationBridge>();
             _reputationOpinion = GetComponent<NPCReputationOpinion>();
+            _priorityBehavior = GetComponent<IPriorityBehaviorState>();
         }
 
         public void LearnRumor(RumorTemplate rumor, float credibility)
@@ -171,14 +177,14 @@ namespace TownsPeople.GamePlay
             }
             else
             {
-                Debug.Log($"<color=grey>[NPCGossipMemory]</color> '{gameObject.name}' learned '{rumor.RumorID}' (ManualTalk) — will surface on player interaction.");
+                Debug.Log($"<color=grey>[NPCGossipMemory]</color> '{gameObject.name}' learned '{rumor.RumorID}' (ManualTalk) ï¿½ will surface on player interaction.");
             }
         }
 
         /// <summary>
         /// Looks through this NPC's known rumors for one matching the given TriggerMode.
         /// In practice, this is now only meaningfully called with AutoProximity (from
-        /// NPCProximityGossip.OnTriggerEnter) — AutoProximity rumors that have already been
+        /// NPCProximityGossip.OnTriggerEnter) ï¿½ AutoProximity rumors that have already been
         /// presented once are skipped, so they don't re-fire every time the player re-enters
         /// the trigger zone. ManualTalk rumors no longer auto-surface through this method at
         /// all (see NPCProximityGossip's dialogue menu integration); they're only reachable via
@@ -196,7 +202,7 @@ namespace TownsPeople.GamePlay
 
         /// <summary>
         /// v15: Presents a standalone reputation-driven greeting (Positive/Negative pool,
-        /// gendered audio) — the same mechanism NPCGreetingResponder uses, but reusing this
+        /// gendered audio) ï¿½ the same mechanism NPCGreetingResponder uses, but reusing this
         /// NPC's own _responseLibrary/_voiceGender fields directly rather than requiring a
         /// separate component. Used as the opening line when the dialogue menu is opened.
         /// </summary>
@@ -204,7 +210,7 @@ namespace TownsPeople.GamePlay
         {
             if (_responseLibrary == null)
             {
-                Debug.LogWarning($"<color=orange>[NPCGossipMemory]</color> '{gameObject.name}' has no Response Library assigned — cannot play a greeting.", this);
+                Debug.LogWarning($"<color=orange>[NPCGossipMemory]</color> '{gameObject.name}' has no Response Library assigned ï¿½ cannot play a greeting.", this);
                 return;
             }
 
@@ -232,7 +238,7 @@ namespace TownsPeople.GamePlay
 
         /// <summary>
         /// v15: Tells the next known rumor (cycling through all of them, wrapping around),
-        /// used by the dialogue menu's "What do you hear on the streets?" option — one rumor
+        /// used by the dialogue menu's "What do you hear on the streets?" option ï¿½ one rumor
         /// per call. Returns false if this NPC knows nothing yet.
         /// </summary>
         public bool TryTellNextRumor()
@@ -258,23 +264,23 @@ namespace TownsPeople.GamePlay
 
         /// <summary>
         /// v20: Same resolution/audio/animation as PresentRumor, but does NOT show text in the
-        /// world-space speech bubble — instead returns the resolved text, for a caller (e.g.
+        /// world-space speech bubble ï¿½ instead returns the resolved text, for a caller (e.g.
         /// the dialogue menu's own popup) to display however it wants. Used when the player
         /// picks a specific rumor from the "What do you hear on the streets?" sub-list, since
         /// the floating world-space bubble may be hard to see behind the menu panel.
         /// </summary>
         /// <summary>
         /// v22: Non-consuming preview of what PresentRumor/PresentRumorForPopup would actually
-        /// display for this rumor RIGHT NOW — without any side effects (no counter advance, no
+        /// display for this rumor RIGHT NOW ï¿½ without any side effects (no counter advance, no
         /// HasBeenPresented change, no audio/animation). Used for the dialogue menu's rumor
         /// list labels, so the preview text matches what clicking will actually produce for
         /// the Specific-response tier.
         ///
         /// v25 FIX: The General-pool tier previously re-rolled a fresh random response on
-        /// every call — since RefreshAfterAction() rebuilds the dialogue menu's option list
+        /// every call ï¿½ since RefreshAfterAction() rebuilds the dialogue menu's option list
         /// roughly once per second while Greet is on cooldown, this caused the previewed text
         /// to flicker between pool entries. Now cached per rumor, keyed alongside the alignment
-        /// pool that produced it — a repeated peek returns the same text until the player's
+        /// pool that produced it ï¿½ a repeated peek returns the same text until the player's
         /// standing actually flips Positive/Negative, at which point it's recomputed once. The
         /// Specific-response tier and the real, actually-played selection in
         /// PresentRumorInternal remain exactly as randomized as before; only this preview path
@@ -323,6 +329,17 @@ namespace TownsPeople.GamePlay
         {
             if (rumor == null) return null;
 
+            // v26: A higher-priority behavior (currently only Flocking/Fleeing) is active on
+            // this NPC â€” skip presentation entirely, WITHOUT marking HasBeenPresented, so this
+            // rumor remains eligible to actually present once that behavior ends rather than
+            // being silently skipped forever. Learning (LearnRumor) is unaffected â€” this method
+            // never touches KnownRumors' membership, only the HasBeenPresented flag below.
+            if (_priorityBehavior != null && _priorityBehavior.IsActive)
+            {
+                Debug.Log($"<color=grey>[NPCGossipMemory]</color> '{gameObject.name}' is in a priority behavior â€” presentation of '{rumor.RumorID}' suppressed (still eligible later).");
+                return null;
+            }
+
             RumorResponse? specificResponse = _gossipManager?.GetSpecificResponse(rumor);
             RumorResponse? chosenResponse;
             bool usedLibraryTier = false;
@@ -359,7 +376,7 @@ namespace TownsPeople.GamePlay
 
             // v23: When the library (General-pool) tier produced the text, it must ALSO
             // respect the library's own ShowTextBubble toggle, in addition to the rumor's.
-            // Specific-tier and rumor-default text are unaffected — only library-sourced text
+            // Specific-tier and rumor-default text are unaffected ï¿½ only library-sourced text
             // gets this extra gate.
             bool allowedByLibrary = !usedLibraryTier || (_responseLibrary != null && _responseLibrary.ShowTextBubble);
 
@@ -407,7 +424,7 @@ namespace TownsPeople.GamePlay
         /// <summary>
         /// This NPC's read on the player's current standing: its own NPCReputationOpinion
         /// (general + faction + personal witness modifier) if present, otherwise just the
-        /// shared general reputation. Used only to pick which General pool to fall back to —
+        /// shared general reputation. Used only to pick which General pool to fall back to ï¿½
         /// unrelated to the triggering rumor's own Alignment.
         /// </summary>
         private RumorAlignment GetPlayerStandingAlignment()
