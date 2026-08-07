@@ -27,6 +27,8 @@ namespace TownsPeople.GamePlay
         private int _currentWaypointIndex;
         private bool _isRunning;
 
+        private NPCFlockingBehavior _flockingBehavior;
+
         private void Awake()
         {
             _agent = GetComponent<LocomotionAgent>();
@@ -37,13 +39,48 @@ namespace TownsPeople.GamePlay
             // up firing (redirecting the destination before the old leg's own arrival check can
             // trigger), so there's no double-advance to guard against.
             _agent.OnApproachingDestination += HandleApproaching;
+
+            // v3: Optional � pauses route-following while this NPC is flocking/fleeing
+            // (NPCFlockingBehavior drives MoveTo() directly during that time), resuming the
+            // CURRENT, unfinished leg once it returns to normal. No-op entirely if this NPC
+            // doesn't have the Flocking add-on component.
+            _flockingBehavior = GetComponent<NPCFlockingBehavior>();
+            if (_flockingBehavior != null)
+            {
+                _flockingBehavior.OnFlockingStarted += HandleFlockingStarted;
+                _flockingBehavior.OnFlockingEnded += HandleFlockingEnded;
+            }
         }
 
         private void OnDestroy()
         {
-            if (_agent == null) return;
-            _agent.OnArrivedAtDestination -= HandleArrived;
-            _agent.OnApproachingDestination -= HandleApproaching;
+            if (_agent != null)
+            {
+                _agent.OnArrivedAtDestination -= HandleArrived;
+                _agent.OnApproachingDestination -= HandleApproaching;
+            }
+
+            if (_flockingBehavior != null)
+            {
+                _flockingBehavior.OnFlockingStarted -= HandleFlockingStarted;
+                _flockingBehavior.OnFlockingEnded -= HandleFlockingEnded;
+            }
+        }
+
+        private void HandleFlockingStarted()
+        {
+            // Route-following pauses � NPCFlockingBehavior takes over MoveTo() calls directly
+            // until it hands control back.
+            _isRunning = false;
+        }
+
+        private void HandleFlockingEnded()
+        {
+            // Resume the CURRENT (unfinished) leg, right where the route left off � "go back
+            // to whatever they were doing."
+            if (_route == null) return;
+            _isRunning = true;
+            MoveToCurrentWaypoint();
         }
 
         private void Start()

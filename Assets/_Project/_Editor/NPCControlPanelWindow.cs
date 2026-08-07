@@ -102,8 +102,12 @@ namespace TownsPeople.CustomEditor
             List<Type> locomotionTypes = new List<Type>();
             Type locomotionAgentType = Type.GetType("TownsPeople.GamePlay.LocomotionAgent");
             Type locomotionRelayType = Type.GetType("TownsPeople.GamePlay.LocomotionRootMotionRelay");
+            // v9: NPCFlockingBehavior — same reflection-safe pattern, since it's also part of
+            // the separately-sold Locomotion add-on.
+            Type locomotionFlockingType = Type.GetType("TownsPeople.GamePlay.NPCFlockingBehavior");
             if (locomotionAgentType != null) locomotionTypes.Add(locomotionAgentType);
             if (locomotionRelayType != null) locomotionTypes.Add(locomotionRelayType);
+            if (locomotionFlockingType != null) locomotionTypes.Add(locomotionFlockingType);
 
             _addonCategories = new (string, Type[])[]
             {

@@ -515,6 +515,7 @@ GameObject:
   - component: {fileID: 126123469}
   - component: {fileID: 126123468}
   - component: {fileID: 126123467}
+  - component: {fileID: 126123481}
   m_Layer: 14
   m_Name: TownsPeople_NPC_Hamilton will win the lottery this week (3)
   m_TagString: Untagged
@@ -586,7 +587,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.LocomotionAgent
   _walkSpeed: 1.6
-  _runSpeed: 7
+  _runSpeed: 6
   _animator: {fileID: 928483027}
   _speedParameterName: Speed
   _turnParameterName: Turn
@@ -892,7 +893,7 @@ Transform:
   m_GameObject: {fileID: 126123466}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -8.05, y: 0.1, z: -6.97}
+  m_LocalPosition: {x: -10.29, y: 0.1, z: -4.77}
   m_LocalScale: {x: 0.5121, y: 0.5121, z: 0.5121}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -901,6 +902,27 @@ Transform:
   - {fileID: 742020070}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &126123481
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 126123466}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 609fb618240e0df4cbd23a634be2b3c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NPCFlockingBehavior
+  _triggerPairs: []
+  _cohesionWeight: 1.55
+  _alignmentWeight: 1
+  _separationWeight: 1.5
+  _fleeWeight: 4
+  _neighborRadius: 8
+  _lookAheadDistance: 6
+  _evaluationInterval: 0.2
+  _minRedirectAngle: 15
 --- !u!1 &136553679
 GameObject:
   m_ObjectHideFlags: 0
@@ -2612,6 +2634,7 @@ GameObject:
   - component: {fileID: 419605735}
   - component: {fileID: 419605748}
   - component: {fileID: 419605749}
+  - component: {fileID: 419605750}
   m_Layer: 14
   m_Name: TownsPeople_NPC_Hamilton will win the lottery this week
   m_TagString: Untagged
@@ -2998,6 +3021,31 @@ MonoBehaviour:
   - Idle_Neutral
   _animator: {fileID: 947088964}
   _reactionsPassThroughState: Empty
+--- !u!114 &419605750
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 419605734}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 609fb618240e0df4cbd23a634be2b3c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NPCFlockingBehavior
+  _triggerPairs:
+  - Trigger: {fileID: 11400000, guid: 52891cfe3810d4d4595f253c22cfb05a, type: 2}
+    ReturnCondition: {fileID: 11400000, guid: 5fc78223e15238748b3165a79bfbbc36, type: 2}
+  - Trigger: {fileID: 11400000, guid: 5377d5b577c8aa4459ad6a6165357ca5, type: 2}
+    ReturnCondition: {fileID: 11400000, guid: 929ca83310ea5f04291cb1e9d5963dab, type: 2}
+  _cohesionWeight: 1.55
+  _alignmentWeight: 1
+  _separationWeight: 1.5
+  _fleeWeight: 4
+  _neighborRadius: 8
+  _lookAheadDistance: 6
+  _evaluationInterval: 0.2
+  _minRedirectAngle: 15
 --- !u!1 &441931522
 GameObject:
   m_ObjectHideFlags: 0
@@ -5391,6 +5439,7 @@ GameObject:
   - component: {fileID: 999379781}
   - component: {fileID: 999379780}
   - component: {fileID: 999379779}
+  - component: {fileID: 999379793}
   m_Layer: 14
   m_Name: TownsPeople_NPC_Hamilton will win the lottery this week (2)
   m_TagString: Untagged
@@ -5777,6 +5826,31 @@ Transform:
   - {fileID: 1492144286}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &999379793
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 999379778}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 609fb618240e0df4cbd23a634be2b3c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NPCFlockingBehavior
+  _triggerPairs:
+  - Trigger: {fileID: 11400000, guid: 52891cfe3810d4d4595f253c22cfb05a, type: 2}
+    ReturnCondition: {fileID: 11400000, guid: 5fc78223e15238748b3165a79bfbbc36, type: 2}
+  - Trigger: {fileID: 11400000, guid: 5377d5b577c8aa4459ad6a6165357ca5, type: 2}
+    ReturnCondition: {fileID: 11400000, guid: 929ca83310ea5f04291cb1e9d5963dab, type: 2}
+  _cohesionWeight: 1.55
+  _alignmentWeight: 1
+  _separationWeight: 1.5
+  _fleeWeight: 4
+  _neighborRadius: 8
+  _lookAheadDistance: 6
+  _evaluationInterval: 0.2
+  _minRedirectAngle: 15
 --- !u!1 &1033467812
 GameObject:
   m_ObjectHideFlags: 0
@@ -6210,6 +6284,7 @@ GameObject:
   - component: {fileID: 1075059683}
   - component: {fileID: 1075059682}
   - component: {fileID: 1075059681}
+  - component: {fileID: 1075059695}
   m_Layer: 14
   m_Name: TownsPeople_NPC_Hamilton will win the lottery this week (1)
   m_TagString: Untagged
@@ -6281,7 +6356,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.LocomotionAgent
   _walkSpeed: 1.6
-  _runSpeed: 7
+  _runSpeed: 6
   _animator: {fileID: 1885396157}
   _speedParameterName: Speed
   _turnParameterName: Turn
@@ -6587,7 +6662,7 @@ Transform:
   m_GameObject: {fileID: 1075059680}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -5.47, y: 0.1, z: -6.2}
+  m_LocalPosition: {x: -6.32, y: 0.1, z: -6.2}
   m_LocalScale: {x: 0.5121, y: 0.5121, z: 0.5121}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -6596,6 +6671,31 @@ Transform:
   - {fileID: 1693011949}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1075059695
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1075059680}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 609fb618240e0df4cbd23a634be2b3c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.GamePlay.NPCFlockingBehavior
+  _triggerPairs:
+  - Trigger: {fileID: 11400000, guid: 52891cfe3810d4d4595f253c22cfb05a, type: 2}
+    ReturnCondition: {fileID: 11400000, guid: 5fc78223e15238748b3165a79bfbbc36, type: 2}
+  - Trigger: {fileID: 11400000, guid: 5377d5b577c8aa4459ad6a6165357ca5, type: 2}
+    ReturnCondition: {fileID: 11400000, guid: 929ca83310ea5f04291cb1e9d5963dab, type: 2}
+  _cohesionWeight: 1.55
+  _alignmentWeight: 1
+  _separationWeight: 1.5
+  _fleeWeight: 4
+  _neighborRadius: 8
+  _lookAheadDistance: 6
+  _evaluationInterval: 0.2
+  _minRedirectAngle: 15
 --- !u!1 &1096692549
 GameObject:
   m_ObjectHideFlags: 0
@@ -13064,6 +13164,7 @@ GameObject:
   - component: {fileID: 4632040188333374188}
   - component: {fileID: 4710378118581818643}
   - component: {fileID: 6980854542604242900}
+  - component: {fileID: 6980854542604242901}
   m_Layer: 0
   m_Name: PlayerArmature
   m_TagString: Player
@@ -15384,6 +15485,20 @@ NavMeshObstacle:
   m_CarveOnlyStationary: 1
   m_Center: {x: 0, y: 0.95, z: 0}
   m_TimeToStationary: 0.5
+--- !u!114 &6980854542604242901
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 864855371815249187}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aec2d02078d05a9468270952562778ea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TownsPeople.Testing.PlayerCombatStateTester
+  _toggleWeaponKey: 20
+  _triggerCombatKey: 17
 --- !u!4 &7110529663707283719
 Transform:
   m_ObjectHideFlags: 0

@@ -1,4 +1,4 @@
-using VContainer;
+﻿using VContainer;
 using VContainer.Unity;
 using UnityEngine;
 using TownsPeople.Architecture;
@@ -13,7 +13,7 @@ using TownsPeople.Testing;
 /// It configures our object injections before any gameplay logic awakens.
 /// </summary>
 // v8: CORRECTED FIX. The previous attempt (v7) tried registering every instance of each
-// per-NPC type individually via builder.RegisterComponent(instance) in a loop � this throws
+// per-NPC type individually via builder.RegisterComponent(instance) in a loop � this throws
 // "Conflict implementation type" the moment a SECOND instance of the same concrete type is
 // registered, since VContainer's registry doesn't support multiple non-keyed registrations of
 // an identical contract type that way.
@@ -33,6 +33,12 @@ public class GameLifetimeScope : LifetimeScope
         // GossipManager and ReputationService are registered ONCE, here, at the game level.
         builder.Register<GossipManager>(Lifetime.Singleton);
         builder.Register<ReputationService>(Lifetime.Singleton);
+        // v9: PlayerCombatState — the integration point for the Locomotion add-on's
+        // Flocking/Fleeing triggers (FlockTriggerCondition/FlockReturnCondition). Registered as
+        // a plain C# service, same as the two above — this project's own player weapon/combat
+        // scripts should call SetWeaponDrawn()/NotifyCombatEngagement() into whichever instance
+        // gets injected wherever they need it.
+        builder.Register<PlayerCombatState>(Lifetime.Singleton);
 
         // v8: Per-NPC and scene-level components are intentionally NOT registered here.
         // GameBootstrapper manually injects every instance of each type below, after Build().
@@ -71,6 +77,16 @@ public class GameLifetimeScope : LifetimeScope
             InjectAllInstancesOf<ReputationTester>();
             InjectAllInstancesOf<DeedTester>();
             InjectAllInstancesOf<TownsPeople.UI.ReputationBarUI>();
+            // v10: PlayerCombatStateTester — Core test harness (same category as GossipTester/
+            // ReputationTester/DeedTester above), direct reference is fine.
+            InjectAllInstancesOf<PlayerCombatStateTester>();
+
+            // v9: NPCFlockingBehavior lives in the separately-sold Locomotion add-on — cannot
+            // be referenced by concrete type here without breaking compile safety for a buyer
+            // who owns Core but not Locomotion (same reasoning already applied to
+            // NPCAnimationBridge/NPCControlPanelWindow's optional-type checks). Reflection-safe
+            // injection instead: no-ops entirely if the add-on isn't installed.
+            InjectAllInstancesOfReflected("TownsPeople.GamePlay.NPCFlockingBehavior");
 
             Debug.Log("<color=yellow>[Bootstrapper]</color> Entry point achieved. Waking engines...");
             Debug.Log("<color=magenta>[Game Bootstrapper]</color> Game initialization complete. All systems are online.");
@@ -80,6 +96,23 @@ public class GameLifetimeScope : LifetimeScope
         {
             T[] instances = Object.FindObjectsByType<T>(FindObjectsInactive.Include);
             foreach (T instance in instances)
+            {
+                _resolver.Inject(instance);
+            }
+        }
+
+        /// <summary>
+        /// v9: Reflection-based counterpart to InjectAllInstancesOf&lt;T&gt;() for optional
+        /// add-on types Core cannot reference directly. No-ops entirely (Type.GetType returns
+        /// null) if the named add-on isn't installed in this project.
+        /// </summary>
+        private void InjectAllInstancesOfReflected(string fullyQualifiedTypeName)
+        {
+            System.Type type = System.Type.GetType(fullyQualifiedTypeName);
+            if (type == null) return;
+
+            Object[] instances = Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (Object instance in instances)
             {
                 _resolver.Inject(instance);
             }
