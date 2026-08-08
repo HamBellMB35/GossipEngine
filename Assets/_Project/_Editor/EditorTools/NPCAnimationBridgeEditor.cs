@@ -55,15 +55,35 @@ namespace TownsPeople.EditorTools
         {
             serializedObject.Update();
 
-            // Draw every field EXCEPT _defaultIdleStates using Unity's normal default
-            // rendering — this keeps every other field (Animator, Speed/Turn parameters,
-            // tooltips, headers, etc.) working exactly as authored, with zero duplication.
+            // Draw every field EXCEPT _defaultIdleStates and _reactionsPassThroughState using
+            // Unity's normal default rendering — this keeps every other field (Animator,
+            // Speed/Turn parameters, tooltips, headers, etc.) working exactly as authored, with
+            // zero duplication.
             SerializedProperty iterator = serializedObject.GetIterator();
             bool enterChildren = true;
             while (iterator.NextVisible(enterChildren))
             {
                 enterChildren = false;
                 if (iterator.propertyPath == "_defaultIdleStates") continue;
+
+                // v3: Reactions Pass Through State's dropdown (drawn via AnimatorStateNameDrawer)
+                // doesn't fit on one line in the NPC Control Panel's narrower per-component card
+                // width. Stacked layout here instead — label above, dropdown full-width below —
+                // same fix pattern already used for two cramped LocomotionAgentEditor fields.
+                if (iterator.propertyPath == "_reactionsPassThroughState")
+                {
+                    DrawStackedAnimatorStateDropdown(iterator, "Reactions Pass Through State");
+                    continue;
+                }
+
+                // v4: Same cramped-label problem, plain float this time — stacked the same way.
+                if (iterator.propertyPath == "_reactionReleaseCrossFadeDuration")
+                {
+                    EditorGUILayout.LabelField("Reaction Release Cross Fade Duration");
+                    iterator.floatValue = EditorGUILayout.FloatField(iterator.floatValue);
+                    continue;
+                }
+
                 EditorGUILayout.PropertyField(iterator, true);
             }
 
@@ -71,6 +91,48 @@ namespace TownsPeople.EditorTools
             DrawDefaultIdleStatesList();
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        /// <summary>
+        /// v3: Stacked single-field dropdown (label above, control below) for a plain
+        /// [AnimatorStateName]-attributed string field — reuses the same static lookup helpers
+        /// as DrawDefaultIdleStatesList()/AnimatorStateNameDrawer, just for one field instead of
+        /// a list.
+        /// </summary>
+        private void DrawStackedAnimatorStateDropdown(SerializedProperty property, string label)
+        {
+            EditorGUILayout.LabelField(label);
+
+            AnimatorController controller = AnimatorStateNameDrawer.ResolveControllerStatic(property, "_animator");
+            List<string> stateNames = controller != null
+                ? AnimatorStateNameDrawer.GetAllStateNames(controller)
+                : new List<string>();
+
+            if (stateNames.Count == 0)
+            {
+                property.stringValue = EditorGUILayout.TextField(property.stringValue);
+                return;
+            }
+
+            int currentIndex = stateNames.IndexOf(property.stringValue);
+            List<string> displayOptions = new List<string>(stateNames);
+            int placeholderCount = 0;
+
+            if (currentIndex < 0)
+            {
+                displayOptions.Insert(0, string.IsNullOrEmpty(property.stringValue)
+                    ? "(none selected)"
+                    : $"{property.stringValue}  (not found in controller)");
+                currentIndex = 0;
+                placeholderCount = 1;
+            }
+
+            EditorGUI.BeginChangeCheck();
+            int selected = EditorGUILayout.Popup(currentIndex, displayOptions.ToArray());
+            if (EditorGUI.EndChangeCheck() && selected >= placeholderCount)
+            {
+                property.stringValue = stateNames[selected - placeholderCount];
+            }
         }
 
         private void DrawDefaultIdleStatesList()

@@ -31,6 +31,13 @@ namespace TownsPeople.EditorTools
 
         public override void OnInspectorGUI()
         {
+            // v2 FIX: target can be a destroyed-but-not-yet-fully-null UnityEngine.Object if the
+            // NPC (or just this component) was deleted while NPCControlPanelWindow still had it
+            // selected/drawn — Unity's overloaded == on UnityEngine.Object correctly detects
+            // this case, unlike a plain reference null check. Bail out before touching anything
+            // on it (GetComponent on a destroyed object throws MissingReferenceException).
+            if (target == null) return;
+
             serializedObject.Update();
 
             SerializedProperty iterator = serializedObject.GetIterator();

@@ -122,6 +122,9 @@ namespace TownsPeople.GamePlay
         [AnimatorStateName(nameof(_animator))]
         [SerializeField] private string _reactionsPassThroughState = "Empty";
 
+        [Tooltip("v19: How fast (seconds) THIS SPECIFIC transition — releasing a reaction/waiting animation back to normal movement — blends, independent of Cross Fade Duration above (which is shared by every OTHER blend: entering a reaction, idle reverts, etc.). Lower = snappier return to movement, useful when a reaction (e.g. a flocking NPC's scared/waiting pose) needs to visually clear quickly once the NPC starts moving again, without speeding up every other transition too.")]
+        [SerializeField] private float _reactionReleaseCrossFadeDuration = 0.1f;
+
         /// <summary>
         /// Read-only access to this bridge's resolved Animator — lets sibling components
         /// (e.g. NPCWitnessReaction, LocomotionAgent) reuse the exact same reference instead of
@@ -474,7 +477,11 @@ namespace TownsPeople.GamePlay
 
             int passThroughHash = Animator.StringToHash(_reactionsPassThroughState);
             int resolvedLayer = ResolveLayerForState(passThroughHash);
-            _animator.CrossFade(passThroughHash, _crossFadeDuration, resolvedLayer);
+            // v19: Uses the dedicated _reactionReleaseCrossFadeDuration instead of the shared
+            // _crossFadeDuration — lets this specific transition be tuned independently (e.g.
+            // faster, so a flocking NPC's waiting pose doesn't linger visually after it's
+            // already moving again) without affecting every other blend in this script.
+            _animator.CrossFade(passThroughHash, _reactionReleaseCrossFadeDuration, resolvedLayer);
             Debug.Log($"<color=cyan>[NPCAnimationBridge]</color> '{gameObject.name}' released the Reactions layer override — Locomotion animation should be visible again.");
         }
 

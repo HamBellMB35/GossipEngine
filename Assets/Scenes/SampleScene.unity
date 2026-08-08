@@ -542,6 +542,7 @@ MonoBehaviour:
   - Idle_Neutral
   _animator: {fileID: 928483027}
   _reactionsPassThroughState: Empty
+  _reactionReleaseCrossFadeDuration: 0.1
 --- !u!114 &126123468
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3025,6 +3026,7 @@ MonoBehaviour:
   - Idle_Neutral
   _animator: {fileID: 947088964}
   _reactionsPassThroughState: Empty
+  _reactionReleaseCrossFadeDuration: 0.1
 --- !u!114 &419605750
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3050,8 +3052,9 @@ MonoBehaviour:
   _lookAheadDistance: 6
   _evaluationInterval: 0.2
   _minRedirectAngle: 15
-  _maxFleeDistance: 0
-  _waitingAnimationStates: []
+  _maxFleeDistance: 3
+  _waitingAnimationStates:
+  - Idle_Scared_01
 --- !u!1 &441931522
 GameObject:
   m_ObjectHideFlags: 0
@@ -5472,6 +5475,7 @@ MonoBehaviour:
   - Idle_Neutral
   _animator: {fileID: 997781047}
   _reactionsPassThroughState: Empty
+  _reactionReleaseCrossFadeDuration: 0.1
 --- !u!114 &999379780
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5858,8 +5862,9 @@ MonoBehaviour:
   _lookAheadDistance: 6
   _evaluationInterval: 0.2
   _minRedirectAngle: 15
-  _maxFleeDistance: 0
-  _waitingAnimationStates: []
+  _maxFleeDistance: 3
+  _waitingAnimationStates:
+  - Idle_Scared_01
 --- !u!1 &1033467812
 GameObject:
   m_ObjectHideFlags: 0
@@ -6320,6 +6325,7 @@ MonoBehaviour:
   - Idle_Neutral
   _animator: {fileID: 1885396157}
   _reactionsPassThroughState: Empty
+  _reactionReleaseCrossFadeDuration: 0.1
 --- !u!114 &1075059682
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6706,8 +6712,9 @@ MonoBehaviour:
   _lookAheadDistance: 6
   _evaluationInterval: 0.2
   _minRedirectAngle: 15
-  _maxFleeDistance: 0
-  _waitingAnimationStates: []
+  _maxFleeDistance: 3
+  _waitingAnimationStates:
+  - Idle_Scared_01
 --- !u!1 &1096692549
 GameObject:
   m_ObjectHideFlags: 0
@@ -8282,6 +8289,7 @@ MonoBehaviour:
   - Idle_Neutral
   _animator: {fileID: 2035710046}
   _reactionsPassThroughState: Empty
+  _reactionReleaseCrossFadeDuration: 0.1
 --- !u!1 &1398861395
 GameObject:
   m_ObjectHideFlags: 0
@@ -12556,6 +12564,7 @@ MonoBehaviour:
   - Idle_Neutral
   _animator: {fileID: 452101217}
   _reactionsPassThroughState: Empty
+  _reactionReleaseCrossFadeDuration: 0.1
 --- !u!95 &2035710046 stripped
 Animator:
   m_CorrespondingSourceObject: {fileID: 5581567671775255752, guid: 055c1abaf111dfd488e19dd8e588cdce, type: 3}

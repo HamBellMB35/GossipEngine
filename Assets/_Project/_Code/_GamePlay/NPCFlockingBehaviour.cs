@@ -244,9 +244,17 @@ namespace TownsPeople.GamePlay
             // otherwise it would keep masking the Locomotion Blend Tree even after this NPC
             // starts moving again (the same class of bug the v17 NPCAnimationBridge fix
             // addressed for ambient reactions).
+            // v7 FIX: SetAnimationState() (called by EnterWaitingAtMaxDistance) pauses movement
+            // as a side effect (PauseForInteraction()) — ReleaseReactionOverride() alone only
+            // releases the ANIMATION mask, it never touches movement by design (that pairing is
+            // normally owned by whichever caller paused it). Without this explicit Resume()
+            // call, the NavMeshAgent stayed paused forever after a waiting episode — the
+            // animation correctly reverted and OnFlockingEnded correctly fired, but the NPC
+            // never actually moved again.
             if (_isWaitingAtMaxDistance)
             {
                 _animationBridge?.ReleaseReactionOverride();
+                _locomotionAgent.Resume();
                 _isWaitingAtMaxDistance = false;
             }
 
@@ -273,9 +281,12 @@ namespace TownsPeople.GamePlay
                 if (_isWaitingAtMaxDistance)
                 {
                     // Pulled back under the threshold (e.g. by cohesion) — resume active
-                    // fleeing, releasing the waiting animation's Reactions-layer mask.
+                    // fleeing. Same v7 fix as EndFlocking(): ReleaseReactionOverride() alone
+                    // never resumes movement, since SetAnimationState() paused it as a side
+                    // effect when the waiting animation started.
                     _isWaitingAtMaxDistance = false;
                     _animationBridge?.ReleaseReactionOverride();
+                    _locomotionAgent.Resume();
                 }
             }
 
