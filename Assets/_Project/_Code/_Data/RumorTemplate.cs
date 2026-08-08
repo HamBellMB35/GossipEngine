@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using TownsPeople.Data;
@@ -9,7 +9,7 @@ namespace TownsPeople.Data
     public enum RumorTriggerMode { AutoProximity, ManualTalk }
 
     // v5: Added. Whether this rumor represents a good deed or a bad one. Drives the
-    // DIRECTION of reputation change (see ReputationImpact fields below) — magnitudes are
+    // DIRECTION of reputation change (see ReputationImpact fields below) ï¿½ magnitudes are
     // always authored as positive numbers, and this single field decides the sign for all of
     // them, so a rumor can't accidentally have contradictory magnitude/direction combinations.
     public enum RumorAlignment { Positive, Negative }
@@ -21,7 +21,7 @@ namespace TownsPeople.Data
     /// A single reaction: display text plus optional gendered voice lines. Reused both for a
     /// rumor's own SpecificResponses and for the general Positive/Negative fallback pools in
     /// GeneralRumorResponseLibrary. Only one RumorResponse list ever needs to exist per
-    /// rumor/pool — gender selection happens per-playback via GetVoiceLine(), not by
+    /// rumor/pool ï¿½ gender selection happens per-playback via GetVoiceLine(), not by
     /// duplicating entire response lists per gender.
     /// </summary>
     [Serializable]
@@ -51,18 +51,18 @@ namespace TownsPeople.Data
         }
     }
 
-    [CreateAssetMenu(fileName = "NewRumor", menuName = "Project/Gossip/Rumor")]
+    [CreateAssetMenu(fileName = "NewRumor", menuName = "TownsPeople Creator/Gossip/Rumor")]
     public class RumorTemplate : ScriptableObject
     {
         public string RumorID;
 
-        // v5: Added — see RumorAlignment above.
+        // v5: Added ï¿½ see RumorAlignment above.
         [Header("Alignment")]
         [Tooltip("Good deed (Positive) or bad deed (Negative). Drives the direction of every reputation impact below.")]
         public RumorAlignment Alignment = RumorAlignment.Positive;
 
         [Header("Presentation Fallback (used only if no Specific Response and no General pool entry is available)")]
-        [Tooltip("If OFF, this rumor's text will never appear in the speech bubble — useful for audio-only mutters/grumbles, or rumors that should only trigger animation/reputation effects silently.")]
+        [Tooltip("If OFF, this rumor's text will never appear in the speech bubble ï¿½ useful for audio-only mutters/grumbles, or rumors that should only trigger animation/reputation effects silently.")]
         public bool ShowTextBubble = true;
 
         [Tooltip("Fallback text shown only if neither a Specific Response nor a General pool response is available.")]
@@ -73,7 +73,7 @@ namespace TownsPeople.Data
         public AudioClip VoiceLineAudio;
 
         [Header("Specific Spread Responses")]
-        [Tooltip("Unique reactions specific to THIS rumor. Used (rotating through the list, not repeating the same one back to back) the first N times this rumor is presented across ALL NPCs — the count is shared game-wide, not per-NPC. Add as many as you want.")]
+        [Tooltip("Unique reactions specific to THIS rumor. Used (rotating through the list, not repeating the same one back to back) the first N times this rumor is presented across ALL NPCs ï¿½ the count is shared game-wide, not per-NPC. Add as many as you want.")]
         public List<RumorResponse> SpecificResponses = new List<RumorResponse>();
 
         [Tooltip("How many total presentations (across every NPC) use a Specific Response before falling back to the General Positive/Negative pool.")]
@@ -93,14 +93,14 @@ namespace TownsPeople.Data
         public float TriggerDistance = 3.0f;
 
         [Header("Reputation Impact (applied ONCE, world-wide, when this deed is witnessed)")]
-        [Tooltip("Magnitude of general reputation change — always a positive number, direction comes from Alignment above.")]
+        [Tooltip("Magnitude of general reputation change ï¿½ always a positive number, direction comes from Alignment above.")]
         public float GeneralReputationMagnitude = 10f;
 
-        [Tooltip("Optional faction this deed affects. Leave empty to skip faction impact entirely. Faction reputation always changes SLOWER than general reputation (see ReputationService.FactionImpactRateMultiplier) — there is no separate magnitude to author here.")]
+        [Tooltip("Optional faction this deed affects. Leave empty to skip faction impact entirely. Faction reputation always changes SLOWER than general reputation (see ReputationService.FactionImpactRateMultiplier) ï¿½ there is no separate magnitude to author here.")]
         public string TargetFactionID;
 
         [Header("Personal Witness Impact (applied ONLY to NPCs who directly witness this deed)")]
-        [Tooltip("Magnitude of personal opinion shift for a direct witness — always a positive number, direction comes from Alignment above. Typically larger than General Reputation Magnitude, and decays over time via NPCReputationOpinion.")]
+        [Tooltip("Magnitude of personal opinion shift for a direct witness ï¿½ always a positive number, direction comes from Alignment above. Typically larger than General Reputation Magnitude, and decays over time via NPCReputationOpinion.")]
         public float WitnessOpinionMagnitude = 25f;
 
         [Header("Tick Propagation")]

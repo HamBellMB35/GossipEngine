@@ -1,11 +1,11 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 
 namespace TownsPeople.Data
 {
     // Determines if this tone triggers an animation, plays once, or loops.
     public enum PlaybackMode { None, PlayOnce, Loop }
 
-    [CreateAssetMenu(fileName = "NewTone", menuName = "Project/Gossip/ToneData")]
+    [CreateAssetMenu(fileName = "NewTone", menuName = "TownsPeople Creator/Gossip/ToneData")]
     public class GossipToneData : ScriptableObject
     {
         [Tooltip("The display name of the tone for debug purposes.")]
@@ -21,7 +21,7 @@ namespace TownsPeople.Data
         public float LoopDuration = 5.0f;
 
         // v3: Back to string state names (as requested), but now drawn as a dropdown of real
-        // states pulled from TargetController below via [AnimatorStateName] — no more typing,
+        // states pulled from TargetController below via [AnimatorStateName] ï¿½ no more typing,
         // no more typos, and no hidden "clip name must match state name" rule to remember.
         [Tooltip("The Animator Controller this tone's states belong to. Assign this to populate the dropdown below.")]
         public RuntimeAnimatorController TargetController;

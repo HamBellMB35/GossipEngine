@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -9,7 +9,7 @@ namespace TownsPeople.Data
 
     // v1: Removed 'GenerativeAI'. This enum is kept (rather than deleted) so BrainStyle
     // remains a meaningful, extensible field if a future deterministic "dynamic" dialogue
-    // mode is ever added — it no longer references any AI/LLM path.
+    // mode is ever added ï¿½ it no longer references any AI/LLM path.
     public enum ConversationalBrainType { FixedScripted }
 
     public enum EmotionalState { Neutral, Happy, Scared, Sad, Angry }
@@ -18,7 +18,7 @@ namespace TownsPeople.Data
     /// ScriptableObject data container serving as the primary design profile for your NPC Creator tool pipeline.
     /// Exposes absolute control over text strings, colors, scales, and spatial positioning layout fields inside the Editor.
     /// </summary>
-    [CreateAssetMenu(fileName = "NewNPCConfiguration", menuName = "NPC Creator/Archetype Configuration")]
+    [CreateAssetMenu(fileName = "NewNPCConfiguration", menuName = "TownsPeople Creator/NPC Archetype")]
     public class NPCArchetypeConfiguration : ScriptableObject
     {
         [Header("Identity & Framework Design")]
