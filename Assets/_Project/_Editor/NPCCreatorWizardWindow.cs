@@ -89,9 +89,17 @@ namespace TownsPeople.CustomEditor
         private bool _hasVendorAddon = false;
         private bool _hasQuestAddon = false;
         private bool _hasLocomotionAddon = false;
+        // v33: Flocking/Fleeing — technically a separate reflection-checked type (same defensive
+        // pattern as everything else here), but architecturally part of the Locomotion add-on
+        // bundle: NPCFlockingBehavior requires LocomotionAgent, so this option only ever appears
+        // nested under Include Locomotion, never standalone.
+        private bool _hasFlockingAddon = false;
 
         [Tooltip("Adds LocomotionAgent (NavMesh-driven movement, Walk/Run speed tiers, turn anticipation) and LocomotionRootMotionRelay to this NPC, fully wired. Also defaults NPCAnimationBridge's Animation Layer Index to 1, matching Locomotion's recommended 2-layer Animator setup, and — if that setup is detected — sets Default Idle States to \"Empty\". If a Blend Tree state named exactly \"Locomotion\" exists in the shared Animator Controller, its per-pose playback rates are auto-synced too. Only shown if the Locomotion add-on is detected in the project.")]
         private bool _includeLocomotion = false;
+
+        [Tooltip("v33: Adds NPCFlockingBehavior — lets this NPC break off its route and flee when a configured trigger fires (player draws a weapon, engages combat, or any custom trigger you've written). Only shown if Include Locomotion is also checked, since Flocking requires LocomotionAgent. The component is added with its own defaults; Trigger/Return Pairs and Waiting Animation States are project-specific data (which weapon-drawn/combat conditions, which animations) that can't be auto-assigned here — configure those afterward via NPCFlockingBehavior's own Inspector.")]
+        private bool _includeFlocking = false;
 
         [Tooltip("If enabled, this NPC gets NPCRumorIndicator — an optional visual debug tool that spawns a small colored sphere above its head for each rumor it currently knows.")]
         private bool _includeRumorIndicator = false;
@@ -151,6 +159,7 @@ namespace TownsPeople.CustomEditor
             _hasVendorAddon = Type.GetType("TownsPeople.GamePlay.VendorComponentAddon") != null;
             _hasQuestAddon = Type.GetType("TownsPeople.GamePlay.QuestComponentAddon") != null;
             _hasLocomotionAddon = Type.GetType("TownsPeople.GamePlay.LocomotionAgent") != null;
+            _hasFlockingAddon = Type.GetType("TownsPeople.GamePlay.NPCFlockingBehavior") != null;
         }
 
         // --- Editor GUI Layout ---
@@ -320,6 +329,31 @@ namespace TownsPeople.CustomEditor
                     new GUIContent("Include Locomotion", "Adds LocomotionAgent and LocomotionRootMotionRelay, fully wired. Also defaults this NPC's NPCAnimationBridge Animation Layer Index to 1 and (if found) Default Idle States to \"Empty\", to match Locomotion's recommended 2-layer Animator setup (Base Layer = Locomotion Blend Tree, Layer 1 = Reactions). Per-pose playback rates auto-sync if a Blend Tree state named exactly \"Locomotion\" exists — otherwise sync manually afterward via LocomotionAgent's own Inspector."),
                     _includeLocomotion);
                 EditorGUILayout.HelpBox("Available for every NPC variant, including Non-Dialogue — Locomotion has no dependency on NPCGossipMemory/dialogue at all.", MessageType.None);
+
+                // v33: Flocking/Fleeing — nested under Locomotion since it requires
+                // LocomotionAgent; only offered once Locomotion itself is actually checked.
+                if (_includeLocomotion)
+                {
+                    EditorGUI.indentLevel++;
+
+                    if (!_hasFlockingAddon)
+                    {
+                        EditorGUILayout.HelpBox("Flocking/Fleeing not detected in this project — install that module to enable this option.", MessageType.Info);
+                        _includeFlocking = false;
+                    }
+                    else
+                    {
+                        _includeFlocking = EditorGUILayout.ToggleLeft(
+                            new GUIContent("Include Flocking / Fleeing", "Adds NPCFlockingBehavior. You'll still need to assign at least one Trigger/Return Pair (e.g. Player Weapon Drawn -> Weapon Put Away) via its own Inspector afterward — those reference project-specific ScriptableObject assets this wizard can't guess at."),
+                            _includeFlocking);
+                    }
+
+                    EditorGUI.indentLevel--;
+                }
+                else
+                {
+                    _includeFlocking = false;
+                }
             }
             EditorGUILayout.EndVertical();
 
@@ -796,6 +830,20 @@ namespace TownsPeople.CustomEditor
                     }
 
                     serializedLocomotion.ApplyModifiedProperties();
+
+                    // v33: Flocking/Fleeing — added here, AFTER LocomotionAgent above, so
+                    // NPCFlockingBehavior's [RequireComponent(typeof(LocomotionAgent))] finds
+                    // the already-configured LocomotionAgent instead of Unity auto-adding a
+                    // fresh, unconfigured one via the RequireComponent fallback.
+                    if (_includeFlocking && _hasFlockingAddon)
+                    {
+                        Type flockingType = Type.GetType("TownsPeople.GamePlay.NPCFlockingBehavior");
+                        if (flockingType != null)
+                        {
+                            rootInstance.AddComponent(flockingType);
+                            Debug.Log("<color=green>[NPC Creator Wizard]</color> NPCFlockingBehavior added — assign at least one Trigger/Return Pair via its own Inspector before this NPC will actually flee.");
+                        }
+                    }
                 }
 
                 if (locomotionRelayType != null)

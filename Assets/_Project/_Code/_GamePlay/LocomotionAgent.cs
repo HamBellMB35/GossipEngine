@@ -152,7 +152,7 @@ namespace TownsPeople.GamePlay
         [Tooltip("v3.2: If enabled, this NPC smoothly slows its TARGET speed down as it approaches its destination, instead of moving at full speed right up until arrival. Deliberately separate from NavMeshAgent's own Auto Braking (kept OFF — it would fight this and the existing Turn Anticipation slowdown, double-applying deceleration unpredictably).")]
         [SerializeField] private bool _decelerateOnArrival = true;
 
-        [Tooltip("v3.2: How far (world units) before the destination this NPC starts smoothly decelerating. Larger = a longer, gentler slowdown; smaller = a shorter, more sudden one.")]
+        [Tooltip("v13: How far (world units) before the destination this NPC starts smoothly decelerating, tuned against WALK SPEED. Run automatically gets a proportionally larger effective distance based on the Run/Walk speed ratio — one value now works for both tiers. Larger = a longer, gentler slowdown; smaller = a shorter, more sudden one.")]
         [SerializeField] private float _arrivalDecelerationDistance = 1.5f;
 
         [Header("Corner Anticipation")]
@@ -337,6 +337,16 @@ namespace TownsPeople.GamePlay
             // v7: Reset for the new leg — OnApproachingDestination can fire once more.
             _hasFiredApproachThisLeg = false;
 
+            // v14 FIX: unconditionally clears any lingering isStopped pause, regardless of what
+            // set it — TryPlayStopAnimation()'s SetAnimationState() call pauses movement as a
+            // side effect (PauseForInteraction()) whenever it plays a reaction, and that pause
+            // was never guaranteed to be matched by a Resume() before the next leg begins. A
+            // real arrival could look complete (_isMoving=true, a fresh destination set) while
+            // the agent stayed permanently paused underneath, unable to actually move. BeginLeg()
+            // represents "start moving" — it should always guarantee the agent isn't paused,
+            // rather than depending on every possible pause path remembering to resume it first.
+            _agent.isStopped = false;
+
             _agent.SetDestination(destination);
             _isMoving = true;
             _hasArrivedThisLeg = false;
@@ -346,6 +356,12 @@ namespace TownsPeople.GamePlay
         {
             _isMoving = false;
             _agent.ResetPath();
+            // v11 FIX: ResetPath() clears the destination but doesn't zero residual velocity —
+            // the agent could keep coasting forward on its remaining momentum for a moment even
+            // after being told to stop, while any animation switch (e.g. a flocking NPC's
+            // waiting/scared pose) already looks fully static. That mismatch reads as a visible
+            // slide across the floor. Explicit zero here guarantees an instant, hard stop.
+            _agent.velocity = Vector3.zero;
 
             // v5: Cancel any pending linger wait — Stop() means this NPC's route has been
             // interrupted; a stale linger firing OnArrivedAtDestination afterward would be wrong.
@@ -449,9 +465,25 @@ namespace TownsPeople.GamePlay
 
                 if (_currentLegShouldStop)
                 {
+                    // v12 FIX: the deceleration ramp gets velocity CLOSE to zero by arrival, not
+                    // exactly zero — the residual carries the character a couple more steps
+                    // while the animation has already settled into idle, reading as a slide.
+                    // Same root cause and fix as the flocking waiting-animation slide (v11 on
+                    // Stop()). Deliberately NOT applied to the pass-through (else) branch below —
+                    // that arrival is meant to flow continuously into the next leg, and zeroing
+                    // velocity there would fight corner anticipation instead of helping.
+                    _agent.velocity = Vector3.zero;
                     // v4: Only a real stop plays the Stop flourish — a pass-through waypoint's
                     // instant, imperceptible arrival (no preceding deceleration) doesn't warrant one.
                     TryPlayStopAnimation();
+                    // v10: Also drop into a random pose from NPCAnimationBridge's Default Idle
+                    // States pool — without this, a route stop just settles into the Locomotion
+                    // Blend Tree's single fixed Speed=0 pose (always the same one animation),
+                    // never touching the variety pool at all. Same mechanism flocking's waiting
+                    // state already uses (PlayIdleForInteraction() -> CrossFades into the
+                    // Reactions layer, masking Base Layer). Released in LingerThenNotifyArrived()
+                    // below once the wait ends, so the walk animation shows through again.
+                    _animationBridge?.PlayIdleForInteraction();
                     // v5: Actually WAIT for LingerDuration before signaling "ready for the next
                     // leg" — previously nothing waited at all; OnArrivedAtDestination fired the
                     // instant arrival was detected regardless of this field.
@@ -473,6 +505,10 @@ namespace TownsPeople.GamePlay
         {
             yield return new WaitForSeconds(duration);
             _lingerCoroutine = null;
+            // v10: Release the idle-variety pose's Reactions-layer mask right as the wait ends,
+            // so the Locomotion Blend Tree's walk/run animation is visible again once movement
+            // actually resumes — same masking pattern used everywhere else in this project.
+            _animationBridge?.ReleaseReactionOverride();
             OnArrivedAtDestination?.Invoke();
         }
 
@@ -523,12 +559,23 @@ namespace TownsPeople.GamePlay
         /// unpredictably). SmoothStep gives an ease-in/ease-out curve rather than a linear ramp,
         /// which reads as noticeably more natural than a straight-line slowdown.
         /// </summary>
+        /// <summary>
+        /// v13: Arrival Deceleration Distance is now the value you tune AGAINST WALK SPEED (the
+        /// baseline) — Run automatically gets a proportionally larger effective ramp based on
+        /// the Run/Walk speed ratio, instead of needing separate manual tuning per tier (the
+        /// same world-distance value used to feel abrupt at Run and fine at Walk, since Run
+        /// covers that distance in far less time).
+        /// </summary>
         private float ComputeArrivalSpeedMultiplier(float remainingDistance)
         {
             if (!_decelerateOnArrival || _arrivalDecelerationDistance <= 0f) return 1f;
-            if (remainingDistance >= _arrivalDecelerationDistance) return 1f;
 
-            float t = Mathf.Clamp01(remainingDistance / _arrivalDecelerationDistance);
+            float speedScale = _walkSpeed > 0.0001f ? _currentLegTargetSpeed / _walkSpeed : 1f;
+            float effectiveDecelerationDistance = _arrivalDecelerationDistance * speedScale;
+
+            if (remainingDistance >= effectiveDecelerationDistance) return 1f;
+
+            float t = Mathf.Clamp01(remainingDistance / effectiveDecelerationDistance);
             return Mathf.SmoothStep(0f, 1f, t);
         }
 
@@ -645,62 +692,28 @@ namespace TownsPeople.GamePlay
         /// neighboring pose. Replaces the old Speed-axis-only bracket interpolation, which could
         /// never correctly handle a 2D tree's Turn-axis variants.
         /// </summary>
-        // TEMP DIAGNOSTIC (Answer #38) — tracks last logged state so logging only fires on
-        // actual change, not every frame. Remove this field and every log line below it once
-        // the actual cause of "no effect" is confirmed and fixed.
-        private string _lastLoggedDominantClip = "<<never logged>>";
-        private float _lastLoggedMultiplier = float.NaN;
-
         private float ComputeLiveClipMultiplier()
         {
-            if (_posePlaybackRates == null || _posePlaybackRates.Count == 0)
-            {
-                LogDiagnosticOnce("<<no synced entries — PosePlaybackRates is empty>>", 1f);
-                return 1f;
-            }
-            if (_animator == null) return 1f;
+            if (_posePlaybackRates == null || _posePlaybackRates.Count == 0 || _animator == null) return 1f;
 
             AnimatorClipInfo[] clipInfos = _animator.GetCurrentAnimatorClipInfo(_locomotionLayerIndex);
-            if (clipInfos == null || clipInfos.Length == 0)
-            {
-                LogDiagnosticOnce($"<<no clip info on layer {_locomotionLayerIndex} — check Locomotion Layer Index matches where your Blend Tree actually lives>>", 1f);
-                return 1f;
-            }
+            if (clipInfos == null || clipInfos.Length == 0) return 1f;
 
             AnimatorClipInfo dominant = clipInfos[0];
             for (int i = 1; i < clipInfos.Length; i++)
             {
                 if (clipInfos[i].weight > dominant.weight) dominant = clipInfos[i];
             }
-            if (dominant.clip == null)
-            {
-                LogDiagnosticOnce("<<dominant clip is null>>", 1f);
-                return 1f;
-            }
+            if (dominant.clip == null) return 1f;
 
             foreach (PosePlaybackRate rate in _posePlaybackRates)
             {
-                if (rate.MotionName == dominant.clip.name)
-                {
-                    LogDiagnosticOnce(dominant.clip.name, rate.Multiplier);
-                    return rate.Multiplier;
-                }
+                if (rate.MotionName == dominant.clip.name) return rate.Multiplier;
             }
 
             // Dominant clip has no synced entry (e.g. sync hasn't been re-run since a new pose
             // was added to the tree) — default to no change rather than guessing.
-            LogDiagnosticOnce($"{dominant.clip.name} <<NO MATCHING SYNCED ENTRY — click Sync Poses again>>", 1f);
             return 1f;
-        }
-
-        /// <summary>TEMP DIAGNOSTIC (Answer #38) — remove alongside the fields/calls above once resolved.</summary>
-        private void LogDiagnosticOnce(string clipDescription, float multiplier)
-        {
-            if (clipDescription == _lastLoggedDominantClip && Mathf.Approximately(multiplier, _lastLoggedMultiplier)) return;
-
-            _lastLoggedDominantClip = clipDescription;
-            _lastLoggedMultiplier = multiplier;
-            Debug.Log($"<color=magenta>[SpeedMultiplierDebug]</color> '{gameObject.name}' dominant: {clipDescription} -> Multiplier: {multiplier}");
         }
 
 #if UNITY_EDITOR

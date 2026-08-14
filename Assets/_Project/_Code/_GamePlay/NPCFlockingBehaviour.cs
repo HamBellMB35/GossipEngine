@@ -28,26 +28,28 @@ namespace TownsPeople.GamePlay
     /// </summary>
     // v4 FIX: v1 used two independent flat lists (ALL triggers checked with OR to start; ALL
     // return conditions checked with OR to end) — this meant a return condition UNRELATED to
-    // whatever actually triggered flocking could end it almost instantly. Concretely: testing
-    // ONLY the "Player In Combat" trigger (weapon never drawn) still had "Weapon Put Away" in
-    // the return list, and !IsWeaponDrawn is trivially true from tick one when the weapon was
-    // never drawn — so flocking ended immediately regardless of the 8-second combat cooldown,
-    // the NPC resumed its route (which passed back near the player), the combat trigger fired
-    // again, and it looped: flee / instantly-end / walk back near player / flee again. Fixed by
-    // pairing each trigger with ITS OWN return condition (FlockTriggerPair) — only the pair that
-    // actually caused the current flocking episode is checked for when to end it.
+    // whatever actually triggered flocking could end it almost instantly. Fixed by pairing each
+    // trigger with ITS OWN return condition (FlockTriggerPair) — only the pair that actually
+    // caused the current flocking episode is checked for when to end it.
     //
-    // v6: Max Flee Distance + Waiting Animation. _maxFleeDistance (0 = unlimited, the original
-    // behavior) caps how far this NPC will run from wherever the CURRENT flocking episode began
-    // (not a fixed world point). Reaching it does NOT end flocking — the actual return condition
-    // (weapon put away, cooldown, etc.) still evaluates normally the whole time — it only stops
-    // the outward movement and plays a random pose from _waitingAnimationStates instead, until
-    // either the return condition fires (flocking ends normally) or the NPC gets pulled back
-    // under the threshold by cohesion/separation (resumes active fleeing automatically). Played
-    // with useTimer: false (no auto-revert) — the normal timed revert would prematurely resume
+    // v6: Max Flee Distance + Waiting Animation. _maxFleeDistance (0 = unlimited) caps how far
+    // this NPC will run from wherever the CURRENT flocking episode began. Reaching it does NOT
+    // end flocking — the actual return condition still evaluates normally the whole time — it
+    // only stops outward movement and plays a random pose from _waitingAnimationStates instead.
+    // Played with useTimer: false (no auto-revert) — the timed revert would prematurely resume
     // movement mid-wait via NPCAnimationBridge's own RevertToRestingState(), fighting this
-    // component's explicit pause; the mask is released explicitly instead, exactly when the
-    // waiting state actually ends.
+    // component's explicit pause; the mask is released explicitly instead.
+    //
+    // v9 FIX: The waiting state was flickering on/off on a regular interval (every
+    // _evaluationInterval) — a "snap back to standing, replay the animation" loop. Root cause:
+    // entering and exiting the waiting state used the EXACT SAME _maxFleeDistance threshold.
+    // Once parked, tiny positional jitter (NavMeshAgent settling after Stop(), floating-point
+    // noise) could nudge the measured distance back under the threshold for a single tick,
+    // which read as "pulled back — resume fleeing" and released the animation, only to
+    // re-cross the threshold and re-enter waiting the very next tick. Fixed with hysteresis —
+    // _maxFleeDistanceHysteresis is subtracted from the threshold ONLY for the resume check,
+    // so the NPC must be pulled back a real, deliberate distance under the max before it's
+    // allowed to resume, not just a hair's width.
     [RequireComponent(typeof(LocomotionAgent))]
     public class NPCFlockingBehavior : MonoBehaviour, IPriorityBehaviorState
     {
@@ -88,15 +90,25 @@ namespace TownsPeople.GamePlay
         [Tooltip("How often (seconds) triggers/return conditions are checked and, while flocking, steering is recalculated. Lower = more responsive but more pathfinding overhead; higher = cheaper but laggier reactions.")]
         [SerializeField] private float _evaluationInterval = 0.2f;
 
-        [Tooltip("v2 FIX: minimum angle (degrees) the newly computed flee direction must differ from the one currently being pursued before a NEW destination is actually issued. Without this, every evaluation tick re-called MoveTo() even for a near-identical direction, forcing NavMeshAgent through a needless decelerate/rotate/re-accelerate cycle each time — that's what produced a rhythmic step/slow/step/stop stutter synced to the evaluation interval. Higher = smoother movement but slower to react to genuine direction changes; lower = more responsive but more prone to the original stutter creeping back in.")]
+        [Tooltip("Minimum angle (degrees) the newly computed flee direction must differ from the one currently being pursued before a NEW destination is actually issued — prevents re-triggering NavMeshAgent's decelerate/rotate/re-accelerate cycle needlessly every evaluation tick when the desired direction has barely changed.")]
         [SerializeField] private float _minRedirectAngle = 15f;
 
         [Header("Max Flee Distance")]
-        [Tooltip("v6: Maximum distance (world units) this NPC will flee from wherever the CURRENT flocking episode began. 0 = unlimited (the original behavior). Reaching this does NOT end flocking — the actual return condition still decides that — it only stops outward movement and plays a Waiting Animation State instead.")]
+        [Tooltip("Maximum distance (world units) this NPC will flee from wherever the CURRENT flocking episode began. 0 = unlimited. Reaching this does NOT end flocking — the actual return condition still decides that — it only stops outward movement and plays a Waiting Animation State instead.")]
         [SerializeField] private float _maxFleeDistance = 0f;
 
-        [Tooltip("v6: Pool of Animator state names this NPC can play once it reaches Max Flee Distance, while waiting for its return condition to fire. One is chosen at random each time it enters this waiting state. Edit via this component's custom Inspector — populated as a dropdown from the NPCAnimationBridge on this same GameObject's assigned Animator. Irrelevant if Max Flee Distance is 0.")]
+        [Tooltip("v9 FIX: Buffer (world units) subtracted from Max Flee Distance for the 'resume fleeing' check only. Prevents rapid on/off toggling of the waiting state caused by tiny positional jitter right at the exact threshold — the NPC must be pulled back at least this far under Max Flee Distance before it resumes active fleeing, not just barely under it.")]
+        [SerializeField] private float _maxFleeDistanceHysteresis = 0.5f;
+
+        [Tooltip("Pool of Animator state names this NPC can play once it reaches Max Flee Distance, while waiting for its return condition to fire. One is chosen at random each time it enters this waiting state. Edit via this component's custom Inspector — populated as a dropdown from the NPCAnimationBridge on this same GameObject's assigned Animator. Irrelevant if Max Flee Distance is 0.")]
         [SerializeField] private List<string> _waitingAnimationStates = new List<string>();
+
+        [Header("Recovery")]
+        [Tooltip("How long (seconds), AFTER the return condition has already fired, this NPC continues playing a Recovery Animation State before actually resuming its previous behavior (route, etc). 0 = no recovery — resumes immediately, the original behavior. Applies regardless of whether the NPC was actively fleeing or already parked at Max Flee Distance when the return condition fired.")]
+        [SerializeField] private float _recoveryDuration = 3f;
+
+        [Tooltip("Pool of Animator state names this NPC can play during the recovery period. One is chosen at random each time recovery begins. Edit via this component's custom Inspector — populated the same way as Waiting Animation States. Irrelevant if Recovery Duration is 0.")]
+        [SerializeField] private List<string> _recoveryAnimationStates = new List<string>();
 
         private static readonly List<NPCFlockingBehavior> _activeInstances = new List<NPCFlockingBehavior>();
 
@@ -106,18 +118,16 @@ namespace TownsPeople.GamePlay
         private float _evaluationTimer;
         private float _flockingStartTime;
         private bool _isFlocking;
-        // v2: Tracks what direction was last actually issued to LocomotionAgent — see
-        // _minRedirectAngle above for why this exists.
         private Vector3 _lastIssuedDirection;
         private bool _hasIssuedDirection;
-        // v4: The specific pair that caused the CURRENT flocking episode — only ITS
-        // ReturnCondition is checked while active, not every pair's return condition.
         private FlockTriggerPair _activeTriggerPair;
-        // v6: Where THIS flocking episode began — Max Flee Distance is measured from here.
         private Vector3 _flockOrigin;
-        // v6: True while parked at Max Flee Distance, playing a waiting animation instead of
-        // actively fleeing further.
         private bool _isWaitingAtMaxDistance;
+        // v11: True during the Recovery phase — the return condition already fired, but this
+        // NPC continues playing a Recovery Animation State for _recoveryDuration before
+        // EndFlocking() actually runs and previous behavior resumes.
+        private bool _isRecovering;
+        private float _recoveryStartTime;
 
         /// <summary>True while this NPC is currently flocking/fleeing.</summary>
         public bool IsFlocking => _isFlocking;
@@ -140,7 +150,6 @@ namespace TownsPeople.GamePlay
         private void Awake()
         {
             _locomotionAgent = GetComponent<LocomotionAgent>();
-            // v6: OPTIONAL — used only for the Waiting Animation feature. Null-safe everywhere.
             _animationBridge = GetComponent<NPCAnimationBridge>();
         }
 
@@ -156,15 +165,24 @@ namespace TownsPeople.GamePlay
 
         private void Update()
         {
-            // v5 FIX: checked every frame (cheap boolean read) instead of only on the throttled
-            // evaluation tick — waiting for the next tick after the agent stopped moving left a
-            // visible pause of up to _evaluationInterval seconds each time it reached its
-            // current lookahead point, which is what "stops from time to time while fleeing"
-            // was. Trigger/return-condition checks and direction-based redirects below still
-            // run on the normal throttled cadence — only the "has it stopped?" catch is per-frame.
-            if (_isFlocking && !_locomotionAgent.IsMoving)
+            // v11: Gated behind !_isRecovering — once the return condition has fired and
+            // recovery has begun, this NPC is done fleeing/waiting entirely; none of the
+            // per-frame flee-steering/redirect logic should run anymore.
+            if (_isFlocking && !_isRecovering && !_locomotionAgent.IsMoving)
             {
                 UpdateFleeSteering();
+            }
+
+            // v9: Also checked every frame while actively fleeing — otherwise the NPC could
+            // physically cross Max Flee Distance up to _evaluationInterval seconds before the
+            // waiting animation actually started.
+            if (_isFlocking && !_isRecovering && !_isWaitingAtMaxDistance && _maxFleeDistance > 0f)
+            {
+                float distanceFromOrigin = Vector3.Distance(transform.position, _flockOrigin);
+                if (distanceFromOrigin >= _maxFleeDistance)
+                {
+                    EnterWaitingAtMaxDistance();
+                }
             }
 
             _evaluationTimer += Time.deltaTime;
@@ -173,11 +191,23 @@ namespace TownsPeople.GamePlay
 
             if (_isFlocking)
             {
-                if (CheckActivePairReturnCondition())
+                if (_isRecovering)
                 {
-                    EndFlocking();
+                    // v11: Only check whether recovery is OVER — nothing else runs during it
+                    // (no steering, no re-triggering, no re-checking the return condition again).
+                    if (Time.time - _recoveryStartTime >= _recoveryDuration)
+                    {
+                        EndFlocking();
+                    }
                     return;
                 }
+
+                if (CheckActivePairReturnCondition())
+                {
+                    BeginRecovery();
+                    return;
+                }
+
                 UpdateFleeSteering();
             }
             else
@@ -201,13 +231,7 @@ namespace TownsPeople.GamePlay
             return null;
         }
 
-        /// <summary>
-        /// v4: Checks ONLY _activeTriggerPair's own ReturnCondition — not every configured
-        /// pair's — so an unrelated pair's return condition can never end an episode it didn't
-        /// start. If the active pair has no ReturnCondition assigned at all, treats that as
-        /// "never automatically returns" (false) rather than defaulting to true, so an
-        /// intentionally-open-ended trigger doesn't silently do nothing.
-        /// </summary>
+        /// <summary>Checks ONLY _activeTriggerPair's own ReturnCondition — not every configured pair's.</summary>
         private bool CheckActivePairReturnCondition()
         {
             if (_activeTriggerPair?.ReturnCondition == null) return false;
@@ -221,72 +245,90 @@ namespace TownsPeople.GamePlay
             _isFlocking = true;
             _activeTriggerPair = triggeringPair;
             _flockingStartTime = Time.time;
-            // v6: Recorded fresh each episode — Max Flee Distance is measured from HERE, not a
-            // fixed world point, so it works correctly no matter where the trigger fires.
             _flockOrigin = transform.position;
             _isWaitingAtMaxDistance = false;
-            // v2: Reset so the first destination of a fresh flocking episode is always issued
-            // immediately, regardless of what direction was pursued last time (if any).
+            _isRecovering = false;
             _hasIssuedDirection = false;
             OnFlockingStarted?.Invoke();
-            // Kick off immediately instead of waiting a full evaluation interval to move.
             UpdateFleeSteering();
         }
 
+        /// <summary>
+        /// v11: Called the instant the active pair's return condition fires — whether the NPC
+        /// was still actively fleeing or already parked at Max Flee Distance. Always halts
+        /// movement (harmless no-op if it was already stopped) and always plays a Recovery
+        /// Animation State if one is configured, for Recovery Duration, before EndFlocking()
+        /// actually runs. If Recovery Duration is 0, ends immediately — the original behavior.
+        /// </summary>
+        private void BeginRecovery()
+        {
+            _isRecovering = true;
+            _recoveryStartTime = Time.time;
+            _isWaitingAtMaxDistance = false;
+            _locomotionAgent.Stop();
+
+            if (_recoveryDuration <= 0f)
+            {
+                EndFlocking();
+                return;
+            }
+
+            if (_animationBridge == null || _recoveryAnimationStates == null || _recoveryAnimationStates.Count == 0) return;
+
+            string chosenState = _recoveryAnimationStates[UnityEngine.Random.Range(0, _recoveryAnimationStates.Count)];
+            if (string.IsNullOrEmpty(chosenState)) return;
+
+            int stateHash = Animator.StringToHash(chosenState);
+            _animationBridge.SetAnimationState(stateHash, useTimer: false);
+        }
+
+        /// <summary>
+        /// v11: Now ONLY ever reached via BeginRecovery() — either its Recovery Duration == 0
+        /// immediate path, or once Update()'s recovery-elapsed check fires. Since BeginRecovery()
+        /// always halts movement (and usually plays a masking animation) before this runs, the
+        /// release + resume below is now unconditional instead of gated on _isWaitingAtMaxDistance.
+        /// </summary>
         private void EndFlocking()
         {
             _isFlocking = false;
+            _isRecovering = false;
+            _isWaitingAtMaxDistance = false;
             _activeTriggerPair = null;
             _hasIssuedDirection = false;
 
-            // v6: If flocking ends WHILE parked at Max Flee Distance, explicitly release the
-            // waiting animation's Reactions-layer mask before route-following resumes —
-            // otherwise it would keep masking the Locomotion Blend Tree even after this NPC
-            // starts moving again (the same class of bug the v17 NPCAnimationBridge fix
-            // addressed for ambient reactions).
-            // v7 FIX: SetAnimationState() (called by EnterWaitingAtMaxDistance) pauses movement
-            // as a side effect (PauseForInteraction()) — ReleaseReactionOverride() alone only
-            // releases the ANIMATION mask, it never touches movement by design (that pairing is
-            // normally owned by whichever caller paused it). Without this explicit Resume()
-            // call, the NavMeshAgent stayed paused forever after a waiting episode — the
-            // animation correctly reverted and OnFlockingEnded correctly fired, but the NPC
-            // never actually moved again.
-            if (_isWaitingAtMaxDistance)
-            {
-                _animationBridge?.ReleaseReactionOverride();
-                _locomotionAgent.Resume();
-                _isWaitingAtMaxDistance = false;
-            }
+            _animationBridge?.ReleaseReactionOverride();
+            _locomotionAgent.Resume();
 
             OnFlockingEnded?.Invoke();
         }
 
         private void UpdateFleeSteering()
         {
-            // v6: Max Flee Distance check — measured from _flockOrigin, not a fixed world
-            // point. Reaching it does NOT end flocking (the return condition still decides
-            // that) — it only stops outward movement and plays a waiting animation instead.
             if (_maxFleeDistance > 0f)
             {
                 float distanceFromOrigin = Vector3.Distance(transform.position, _flockOrigin);
-                if (distanceFromOrigin >= _maxFleeDistance)
-                {
-                    if (!_isWaitingAtMaxDistance)
-                    {
-                        EnterWaitingAtMaxDistance();
-                    }
-                    return; // Don't issue a new flee destination while waiting.
-                }
 
                 if (_isWaitingAtMaxDistance)
                 {
-                    // Pulled back under the threshold (e.g. by cohesion) — resume active
-                    // fleeing. Same v7 fix as EndFlocking(): ReleaseReactionOverride() alone
-                    // never resumes movement, since SetAnimationState() paused it as a side
-                    // effect when the waiting animation started.
-                    _isWaitingAtMaxDistance = false;
-                    _animationBridge?.ReleaseReactionOverride();
-                    _locomotionAgent.Resume();
+                    // v9 FIX: hysteresis — only resume once pulled back MEANINGFULLY under the
+                    // threshold, not just barely under it, so tiny positional jitter right at
+                    // the boundary can't toggle the waiting state on/off every tick.
+                    if (distanceFromOrigin < _maxFleeDistance - _maxFleeDistanceHysteresis)
+                    {
+                        _isWaitingAtMaxDistance = false;
+                        _animationBridge?.ReleaseReactionOverride();
+                        _locomotionAgent.Resume();
+                        // Falls through to normal steering below — actively resumes fleeing.
+                    }
+                    else
+                    {
+                        return; // Still waiting — don't touch movement or the animation.
+                    }
+                }
+                else if (distanceFromOrigin >= _maxFleeDistance)
+                {
+                    EnterWaitingAtMaxDistance();
+                    return;
                 }
             }
 
@@ -305,22 +347,11 @@ namespace TownsPeople.GamePlay
             Vector3 combined = cohesion + alignment + separation + flee;
             if (combined.sqrMagnitude < 0.0001f)
             {
-                // Everything cancelled out (e.g. no neighbors, no known threat position) —
-                // fall back to continuing in the current facing direction rather than freezing.
                 combined = transform.forward;
             }
 
             Vector3 desiredDirection = combined.normalized;
 
-            // v3 FIX: v2's angle-only check had a gap — when direction DIDN'T change enough to
-            // redirect, the NPC kept walking toward the SAME lookahead point and eventually
-            // reached it. NavMeshAgent halts on its own arrival regardless of
-            // _currentLegShouldStop (that flag only gates the deceleration ramp/Stop flourish,
-            // not whether the agent physically stops at its destination) — with nothing to
-            // redirect it, it just sat there until the next tick happened to swing far enough,
-            // producing the exact "step, arrive, stall, step again" pattern, independent of
-            // _minRedirectAngle's value. Now ALSO redirects immediately whenever the agent has
-            // stopped moving, so it can never sit idle mid-flee.
             bool shouldRedirect = !_hasIssuedDirection
                 || !_locomotionAgent.IsMoving
                 || Vector3.Angle(_lastIssuedDirection, desiredDirection) >= _minRedirectAngle;
@@ -333,10 +364,9 @@ namespace TownsPeople.GamePlay
         }
 
         /// <summary>
-        /// v6: Called once, the instant Max Flee Distance is first reached — halts movement and
+        /// Called once, the instant Max Flee Distance is first reached — halts movement and
         /// plays a random pose from _waitingAnimationStates with useTimer: false (no
-        /// auto-revert; see the class-level v6 comment for why). Safe no-op if no waiting
-        /// animations are configured — the NPC simply stands still at max distance instead.
+        /// auto-revert). Safe no-op if no waiting animations are configured.
         /// </summary>
         private void EnterWaitingAtMaxDistance()
         {
@@ -405,7 +435,6 @@ namespace TownsPeople.GamePlay
             {
                 Vector3 offset = transform.position - neighbors[i].transform.position;
                 float distance = offset.magnitude;
-                // Closer neighbors push harder — inverse-distance weighting, standard boids technique.
                 if (distance > 0.001f) separation += offset.normalized / distance;
             }
 

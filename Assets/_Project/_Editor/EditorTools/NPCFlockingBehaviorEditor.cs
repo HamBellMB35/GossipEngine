@@ -9,9 +9,10 @@ namespace TownsPeople.EditorTools
 {
     /// <summary>
     /// Custom Inspector for NPCFlockingBehavior. Every field draws normally EXCEPT Waiting
-    /// Animation States, which gets a dedicated section below: a proper reorderable list of real
-    /// Animator state dropdowns (Add/Remove buttons included) — same pattern and reasoning as
-    /// NPCAnimationBridgeEditor's Default Idle States section.
+    /// Animation States and Recovery Animation States, which each get a dedicated section
+    /// below: a proper reorderable list of real Animator state dropdowns (Add/Remove buttons
+    /// included) — same pattern and reasoning as NPCAnimationBridgeEditor's Default Idle States
+    /// section.
     ///
     /// FIX: TownsPeople.CustomEditor's own last namespace segment shadows UnityEditor's
     /// CustomEditor attribute and Editor base class (same collision already fixed on
@@ -23,10 +24,13 @@ namespace TownsPeople.EditorTools
     public class NPCFlockingBehaviorEditor : UnityEditor.Editor
     {
         private SerializedProperty _waitingAnimationStatesProp;
+        // v3: Second list, same treatment — Recovery Animation States.
+        private SerializedProperty _recoveryAnimationStatesProp;
 
         private void OnEnable()
         {
             _waitingAnimationStatesProp = serializedObject.FindProperty("_waitingAnimationStates");
+            _recoveryAnimationStatesProp = serializedObject.FindProperty("_recoveryAnimationStates");
         }
 
         public override void OnInspectorGUI()
@@ -45,19 +49,30 @@ namespace TownsPeople.EditorTools
             while (iterator.NextVisible(enterChildren))
             {
                 enterChildren = false;
+                // v3: Both list fields are drawn in their own dedicated sections below instead
+                // of via the default per-property rendering.
                 if (iterator.propertyPath == "_waitingAnimationStates") continue;
+                if (iterator.propertyPath == "_recoveryAnimationStates") continue;
                 EditorGUILayout.PropertyField(iterator, true);
             }
 
             EditorGUILayout.Space();
-            DrawWaitingAnimationStatesList();
+            DrawAnimationStateList(_waitingAnimationStatesProp, "Waiting Animation States", "+ Add Waiting Animation");
+
+            EditorGUILayout.Space();
+            DrawAnimationStateList(_recoveryAnimationStatesProp, "Recovery Animation States", "+ Add Recovery Animation");
 
             serializedObject.ApplyModifiedProperties();
         }
 
-        private void DrawWaitingAnimationStatesList()
+        /// <summary>
+        /// v3: Generalized from the original DrawWaitingAnimationStatesList() — now takes the
+        /// target SerializedProperty and its display labels, so both Waiting and Recovery
+        /// Animation States share one implementation instead of duplicating this whole block.
+        /// </summary>
+        private void DrawAnimationStateList(SerializedProperty listProp, string headerLabel, string addButtonLabel)
         {
-            EditorGUILayout.LabelField("Waiting Animation States", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(headerLabel, EditorStyles.boldLabel);
 
             AnimatorController controller = ResolveControllerFromSiblingBridge();
             List<string> stateNames = controller != null
@@ -73,9 +88,9 @@ namespace TownsPeople.EditorTools
                 EditorGUILayout.HelpBox("The assigned Animator Controller has no states yet.", MessageType.Info);
             }
 
-            for (int i = 0; i < _waitingAnimationStatesProp.arraySize; i++)
+            for (int i = 0; i < listProp.arraySize; i++)
             {
-                SerializedProperty element = _waitingAnimationStatesProp.GetArrayElementAtIndex(i);
+                SerializedProperty element = listProp.GetArrayElementAtIndex(i);
 
                 EditorGUILayout.BeginHorizontal();
 
@@ -110,7 +125,7 @@ namespace TownsPeople.EditorTools
 
                 if (GUILayout.Button("-", GUILayout.Width(24)))
                 {
-                    _waitingAnimationStatesProp.DeleteArrayElementAtIndex(i);
+                    listProp.DeleteArrayElementAtIndex(i);
                     EditorGUILayout.EndHorizontal();
                     break; // Array size just changed — stop this loop iteration cleanly.
                 }
@@ -118,11 +133,11 @@ namespace TownsPeople.EditorTools
                 EditorGUILayout.EndHorizontal();
             }
 
-            if (GUILayout.Button("+ Add Waiting Animation"))
+            if (GUILayout.Button(addButtonLabel))
             {
-                int newIndex = _waitingAnimationStatesProp.arraySize;
-                _waitingAnimationStatesProp.InsertArrayElementAtIndex(newIndex);
-                _waitingAnimationStatesProp.GetArrayElementAtIndex(newIndex).stringValue =
+                int newIndex = listProp.arraySize;
+                listProp.InsertArrayElementAtIndex(newIndex);
+                listProp.GetArrayElementAtIndex(newIndex).stringValue =
                     stateNames.Count > 0 ? stateNames[0] : "";
             }
         }
